@@ -1,0 +1,10 @@
+const environment = globalThis?.LWR?.env || {};
+export const isServer = environment && (environment.SSR === 'true' || environment.SSR === true);
+// The baseBath from the config or set from the request (e.g. /shop)
+export const basePath = environment && environment.basePath;
+// The locale set from the request or the defaultLocale from the config (e.g. en-US)
+export const locale = environment && environment.locale;
+// Root base path for static assets (e.g. /shop/mobify/bundle/1234/site)
+export const assetBasePath = environment && environment.assetBasePath;
+// Base path for UI routing (e.g. /shop/en-US)
+export const uiBasePath = environment && environment.uiBasePath;
