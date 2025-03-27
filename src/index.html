@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI-Powered Figma Generator</title>
+  <style>
+    body {
+      font-family: Inter, sans-serif;
+      text-align: center;
+      padding: 20px;
+    }
+
+    input,
+    button {
+      width: 100%;
+      padding: 10px;
+      margin-top: 10px;
+    }
+
+    button {
+      background-color: #18A0FB;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      width: 100%;
+      font-size: 14px;
+    }
+
+    button:hover {
+      background-color: #0D8DE3;
+    }
+
+    button:disabled {
+      background-color: #CCCCCC;
+      cursor: not-allowed;
+    }
+
+    .progress-container {
+      margin-top: 20px;
+      display: none;
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 4px;
+      background-color: #F5F5F5;
+      border-radius: 2px;
+      overflow: hidden;
+      margin-top: 10px;
+    }
+
+    .progress-fill {
+      width: 0%;
+      height: 100%;
+      background-color: #18A0FB;
+      transition: width 0.3s ease-in-out;
+    }
+
+    .status-message {
+      margin-top: 10px;
+      font-size: 14px;
+      color: #666;
+    }
+  </style>
+</head>
+
+<body>
+  <h2>Generate UI from AI</h2>
+  <input type="text" id="prompt" placeholder="Describe your UI..." />
+  <button id="generate">Generate</button>
+
+  <div class="progress-container" id="progressContainer">
+    <div class="progress-bar">
+      <div class="progress-fill" id="progressFill"></div>
+    </div>
+    <div class="status-message" id="statusMessage">Generating your design...</div>
+  </div>
+
+  <script>
+    const generateButton = document.getElementById('generate');
+    const promptInput = document.getElementById('prompt');
+    const progressContainer = document.getElementById('progressContainer');
+    const progressFill = document.getElementById('progressFill');
+    const statusMessage = document.getElementById('statusMessage');
+
+    generateButton.onclick = () => {
+      const prompt = promptInput.value;
+      if (!prompt) {
+        alert('Please enter a prompt');
+        return;
+      }
+
+      // Disable input and button
+      promptInput.disabled = true;
+      generateButton.disabled = true;
+
+      // Show progress bar
+      progressContainer.style.display = 'block';
+      progressFill.style.width = '0%';
+      statusMessage.textContent = 'Fetching components...';
+
+      // Start progress animation
+      let progress = 0;
+      const progressInterval = setInterval(() => {
+        if (progress < 90) {
+          progress += 5;
+          progressFill.style.width = `${progress}%`;
+        }
+      }, 500);
+
+      // Send message to plugin
+      parent.postMessage({ pluginMessage: { type: "generate", prompt } }, "*");
+
+      // Listen for completion message
+      window.onmessage = (event) => {
+        const message = event.data.pluginMessage;
+        if (message.type === 'complete') {
+          clearInterval(progressInterval);
+          progressFill.style.width = '100%';
+          statusMessage.textContent = 'Design generated successfully!';
+
+          // Re-enable input and button after a delay
+          setTimeout(() => {
+            promptInput.disabled = false;
+            generateButton.disabled = false;
+            progressContainer.style.display = 'none';
+          }, 2000);
+        }
+      };
+    };
+  </script>
+</body>
+
+</html>
