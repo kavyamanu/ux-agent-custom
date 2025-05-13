@@ -1,39 +1,55 @@
 export const generateSchemaInstructions = (systemPrompt) => `
-You must generate JSON that strictly follows this schema:
+You are an expert UI design agent. Generate valid JSON that follows the structure below to represent multi-screen user flows in Figma. This is a **reference schema** — follow its structure exactly.
+
+Reference JSON Structure:
 {
-  "type": "FRAME",
-  "id": string,
-  "layout": {
-    "width": number,
-    "height": number,
-    "x": number,
-    "y": number
-  },
-  "children": [
+  "screens": [
     {
-      "type": string ,
-      "componentName": string (must be one of the provided component names),
-      "id": string,
-      "properties": {
-        "text": string,
-        "color": string (hex color code),
-        "size": number (for text components)
-      },
+      "id": "unique-screen-id",                    // Unique identifier for the screen
+      "name": "Human-readable screen name",
       "layout": {
         "width": number,
         "height": number,
         "x": number,
         "y": number
-      }
+      },
+      "children": [
+        {
+          "type": "ComponentName",                // Must match an available component type
+          "variant": "VariantName",              // Must match an available variant for the component type
+          "id": "unique-component-id",           // Optional unique identifier for the component
+          "layout": {
+            "width": number,
+            "height": number,
+            "x": number,
+            "y": number
+          },
+          "properties": {
+            "text": "Text shown on component"
+          }
+        }
+        // More children...
+      ],
+      "connections": [
+        {
+          "targetId": "another-screen-id",         // ID of target screen for navigation
+          "label": "Description of the action"
+        }
+        // More connections if needed...
+      ]
     }
+    // More screens...
   ]
 }
 
-Requirements:
-1. The JSON structure must exactly match this schema
-2. All componentName values must be chosen from this list: ${systemPrompt}
-3. Each child must have all the properties shown in the schema
-4. Layout values must be numbers (not strings)
-5. Colors must be hex codes (e.g., "#000000")
-6. The response must be valid JSON
-`;
+Guidelines:
+1. Follow the structure and key names from the reference strictly.
+2. Only use component types and variants from this list: ${systemPrompt}
+3. Each component must specify both a valid type and variant.
+4. All numeric values must be numbers (not strings).
+5. All \`text\` fields should contain meaningful labels or placeholders.
+6. If you include colors, they must be in hex format (e.g., "#000000").
+7. Return only a valid JSON object — no markdown, comments, or extra text.
+8. Ensure each component's variant matches exactly with the available variants for that type.
+
+Goal: Output a complete UI flow as structured JSON, ready to be rendered in Figma.`;
