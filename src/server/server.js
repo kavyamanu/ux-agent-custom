@@ -1,19 +1,32 @@
 /* eslint-disable no-undef */
 import Fastify from "fastify";
 import dotenv from "dotenv";
-import OpenAI from "openai";
+import https from "https";
 import { generateSchemaInstructions } from "./util.js";
 
 dotenv.config();
 
-if (!process.env.OPENAI_API_KEY) {
-  console.error("Missing OPENAI_API_KEY environment variable");
-  process.exit(1);
+// Validate required environment variables
+const requiredEnvVars = [
+  'EINSTEIN_API_KEY',
+  'EINSTEIN_BASE_URL',
+  'EINSTEIN_MODEL',
+  'EINSTEIN_CLIENT_FEATURE_ID',
+  'EINSTEIN_TENANT_ID'
+];
+
+for (const envVar of requiredEnvVars) {
+  if (!process.env[envVar]) {
+    console.error(`Missing ${envVar} environment variable`);
+    process.exit(1);
+  }
 }
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-  baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
+// Configure HTTPS agent with custom options
+const httpsAgent = new https.Agent({
+  rejectUnauthorized: false, // Allow self-signed certificates
+  keepAlive: true,
+  timeout: 30000 // 30 second timeout
 });
 
 const fastify = Fastify({
@@ -48,16 +61,32 @@ fastify.post("/command", async (request, reply) => {
     }
 
     const schemaInstructions = generateSchemaInstructions(systemPrompt);
+    const fullPrompt = `${schemaInstructions}\n\nUser Prompt: ${prompt}`;
 
-    const response = await openai.chat.completions.create({
-      model: "gemini-2.0-flash",
-      messages: [
-        { role: "system", content: schemaInstructions },
-        { role: "user", content: prompt },
-      ],
+    const response = await fetch(`${process.env.EINSTEIN_BASE_URL}/generations`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `API_KEY ${process.env.EINSTEIN_API_KEY}`,
+        "x-client-feature-id": process.env.EINSTEIN_CLIENT_FEATURE_ID,
+        "x-sfdc-app-context": "EinsteinGPT",
+        "x-sfdc-core-tenant-id": process.env.EINSTEIN_TENANT_ID
+      },
+      body: JSON.stringify({
+        model: process.env.EINSTEIN_MODEL,
+        prompt: fullPrompt
+      }),
+      timeout: 30000, // 30 second timeout
+      agent: httpsAgent // Use the custom HTTPS agent
     });
 
-    const rawContent = response.choices[0].message.content;
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Einstein API error: ${response.status} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    const rawContent = data.generations[0].text;
     const jsonContent = rawContent.replace(/```json|```/g, "").trim();
     const parsedData = JSON.parse(jsonContent);
 
