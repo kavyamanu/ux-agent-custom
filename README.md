@@ -74,7 +74,7 @@ LOG_LEVEL=INFO
 
 4. Start the server:
 ```bash
-pnpm run dev
+npm run dev
 ```
 
 5. In Figma:
