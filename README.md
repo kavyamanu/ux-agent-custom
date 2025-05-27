@@ -4,7 +4,7 @@ A powerful AI-powered design assistant plugin for Figma that helps you create be
 
 ## Features
 
-- 🤖 AI-powered design generation
+- 🤖 AI-powered design generation using Einstein AI
 - 📚 Support for multiple component libraries
 - 🔄 Real-time design preview
 - 🚀 Fast component rendering
@@ -17,16 +17,20 @@ A powerful AI-powered design assistant plugin for Figma that helps you create be
 - Node.js (v14 or higher)
 - Figma Desktop App
 - Access to component libraries in Figma
-- Gemini API Key
+- Einstein API Access
 - Figma Access Token
 
 ## API Keys Setup
 
-### Generating Gemini API Key
-1. Go to [Google AI Studio](https://aistudio.google.com/apikey)
-2. Click on "Get API Key" in the top right corner
-3. Click "Create API key in new project"
-4. Copy the generated API key
+### Einstein AI Configuration
+1. Ensure you have access to Einstein AI services
+2. Obtain the following credentials from your Salesforce admin:
+   - Einstein API Key
+   - Einstein Base URL
+   - Einstein Model ID
+   - Einstein Client Feature ID
+   - Einstein Tenant ID
+   - Einstein Organization ID
 
 ### Generating Figma Access Token
 1. Open Figma Desktop App
@@ -50,20 +54,27 @@ cd figma-ux-agent
 
 2. Install dependencies:
 ```bash
-npm install
+pnpm install
 ```
 
 3. Set up environment variables:
 Create a `.env` file in the root directory with:
 ```
-OPENAI_API_KEY=your_gemini_api_key
-FIGMA_TOKEN=your_figma_access_token
 PORT=3000
+FIGMA_TOKEN=your_figma_access_token
+EINSTEIN_API_KEY=your_einstein_api_key
+EINSTEIN_BASE_URL=your_einstein_base_url
+EINSTEIN_MODEL=your_einstein_model_id
+EINSTEIN_MODEL_PROVIDER=your_einstein_model_provider
+EINSTEIN_ORG_ID=your_einstein_org_id
+EINSTEIN_CLIENT_FEATURE_ID=your_einstein_client_feature_id
+EINSTEIN_TENANT_ID=your_einstein_tenant_id
+LOG_LEVEL=INFO
 ```
 
 4. Start the server:
 ```bash
-npm run dev
+pnpm run dev
 ```
 
 5. In Figma:
@@ -74,7 +85,7 @@ npm run dev
 
 1. Open the plugin in Figma
 2. Enter your design requirements in the chat interface
-3. The AI will analyze your prompt and generate a preview
+3. The Einstein AI will analyze your prompt and generate a preview
 4. Review the preview and components to be used
 5. Click generate to create the design
 6. Use the stop button to halt generation if needed
@@ -95,7 +106,7 @@ Each library is configured with its own file key and can be used independently o
 figma-ux-agent/
 ├── src/
 │   ├── plugin.ts        # Figma plugin code
-│   ├── server.js        # Local server for AI integration
+│   ├── server.js        # Local server for Einstein AI integration
 │   └── index.html       # Plugin UI
 ├── manifest.json        # Plugin manifest
 └── package.json         # Project dependencies
