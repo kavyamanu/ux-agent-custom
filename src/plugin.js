@@ -5,18 +5,18 @@ let isGenerating = false;
 let shouldStop = false;
 // Add library configuration
 const LIBRARY_CONFIG = {
-    slds: {
+    core: {
         name: "Core Components",
-        fileKey: "RiY2reCmbX0Jyq7QAFL8SE",
-    }, // Using same key for now as requested
-    // web: {
-    //   name: "web Components",
-    //   fileKey: "uuzKZvAxmOWZSDuZjkAfmQ", // Using same key for now as requested
-    // },
-    // slds: {
-    //   name: "slds Components",
-    //   fileKey: "E1qeg6cS93K9Lm8c5AMSod", // Using same key for now as requested
-    // }
+        fileKey: "RiY2reCmbX0Jyq7QAFL8SE", // Using same key for now as requested
+    },
+    web: {
+        name: "web Components",
+        fileKey: "uuzKZvAxmOWZSDuZjkAfmQ", // Using same key for now as requested
+    },
+    slds: {
+        name: "slds Components",
+        fileKey: "E1qeg6cS93K9Lm8c5AMSod", // Using same key for now as requested
+    }
 };
 let componentCache = {};
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds
@@ -40,7 +40,7 @@ figma.ui.onmessage = async (msg) => {
             return;
         }
         // Always use all libraries
-        const libraryIds = ['slds'];
+        const libraryIds = ['core', 'slds', 'web'];
         const selectedLibraryConfigs = libraryIds.map(id => LIBRARY_CONFIG[id]).filter(Boolean);
         if (!selectedLibraryConfigs.length) {
             figma.notify("Error: No valid libraries found", { error: true });
@@ -96,7 +96,7 @@ async function getLLMResponse(availableComponents, userPrompt, libraryConfig) {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                Accept: "application/json",
+                "Accept": "application/json"
             },
             body: JSON.stringify({
                 prompt: userPrompt,
@@ -105,17 +105,38 @@ async function getLLMResponse(availableComponents, userPrompt, libraryConfig) {
 
 1. Design Focus (PRIMARY REQUIREMENT):
    - Generate desktop-first designs by default
-   - Target desktop screen sizes (width = 1440px, height= 1024px)
+   - Target desktop screen sizes (width >= 1024px)
    - Use desktop-optimized layouts and components
    - Consider mobile responsiveness as a secondary requirement
-   - add 64px margin between two generated frames.
 
 2. Global Header Requirements (MUST BE INCLUDED IN EVERY PAGE):
-   - Every screen MUST include a global header and global navigation at the top and there should not be any padding above that. 
-   - global header and global navigation must be the first two components in the layout
-   - global header and global navigation must span the full width of the screen
-   - global header and global navigation must be visible at all times (sticky positioning)
+   - Every screen MUST include a global header at the top
+   - Header must be the first component in the layout
+   - Header must span the full width of the screen
+   - Header must be visible at all times (sticky positioning)
 
+   Desktop Header Types (Primary Focus):
+   * Choose from these header types based on context:
+     - Navigation Header (for main pages):
+       - Logo/App name on left
+       - Primary navigation in center
+       - User actions on right
+       - Height: 64px
+     - Content Header (for detail pages):
+       - Back button on left
+       - Page title in center
+       - Action buttons on right
+       - Height: 56px
+     - Dashboard Header (for analytics/dashboards):
+       - Section title on left
+       - Date/filter controls in center
+       - Export/settings on right
+       - Height: 72px
+     - Minimal Header (for focused tasks):
+       - Small logo on left
+       - Progress indicator in center
+       - Close/save on right
+       - Height: 48px
 
    Mobile Considerations (Secondary):
    * For mobile screens (width < 768px):
@@ -125,13 +146,12 @@ async function getLLMResponse(availableComponents, userPrompt, libraryConfig) {
      - Ensure touch targets are at least 44x44px
 
 3. Layout Structure:
-   - global header and global navigation MUST be the first two component
-   - Content area must start below the global navigation
-   - Account for header height in content layout 
+   - Header MUST be the first component
+   - Content area must start below the header
+   - Account for header height in content layout (add 64px top margin to main content)
    - Ensure proper spacing between header and content
    - Maintain consistent padding and margins
    - Use desktop-optimized grid layouts
-   - render components in a single column layout by default
    - Consider multi-column layouts where appropriate
 
 4. Component Variant Selection Guidelines:
@@ -158,8 +178,8 @@ async function getLLMResponse(availableComponents, userPrompt, libraryConfig) {
        - Use "Info" for general information
    - Available components and their variants:
    ${Object.entries(componentGroups)
-                    .map(([type, variants]) => `- ${type}:\n${variants.map((v) => `  * ${v}`).join("\n")}`)
-                    .join("\n")}
+                    .map(([type, variants]) => `- ${type}:\n${variants.map(v => `  * ${v}`).join('\n')}`)
+                    .join('\n')}
 
 5. User-Centric Design Principles:
    - Design for clarity and ease of use
@@ -291,11 +311,6 @@ async function getFigmaComponentsByIds(libraryIds) {
 function findMatchingComponent(components, type, variant) {
     const normalizedType = type.toLowerCase().trim();
     const normalizedVariant = variant ? variant.toLowerCase().trim() : undefined;
-    // Log all available types and variants
-    console.log('Available:', components.map(c => ({
-        type: (c.containing_frame && (c.containing_frame.name || c.containing_frame.pageName) || '').toLowerCase().trim(),
-        variant: (c.name || '').toLowerCase().trim()
-    })));
     // Try exact match
     let match = components.find(comp => {
         const compType = (comp.containing_frame && (comp.containing_frame.name || comp.containing_frame.pageName) || '').toLowerCase().trim();
