@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agentforce</title>
+  <style>
+    body {
+      font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: #ffffff;
+    }
+
+    .app-container {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      max-width: 100%;
+      margin: 0 auto;
+      position: relative;
+    }
+
+    .chat-interface {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      position: relative;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 16px;
+      border-bottom: 1px solid #e1e1e1;
+      background: #ffffff;
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      flex-shrink: 0;
+      /* Prevent header from shrinking */
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .header-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #000000;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 12px;
+    }
+
+    .header-button {
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 4px;
+      color: #666666;
+    }
+
+    .chat-container {
+      flex: 1;
+      padding: 16px;
+      background-color: #f5f5f5;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding-bottom: 160px;
+      position: relative;
+      overflow-y: auto;
+      height: calc(100vh - 180px);
+      /* Account for header and input container */
+    }
+
+    .message {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      max-width: 85%;
+      flex-shrink: 0;
+      margin-bottom: 8px;
+      /* Add spacing between messages */
+    }
+
+    .message.ai {
+      align-self: flex-start;
+    }
+
+    .message.user {
+      flex-direction: row-reverse;
+      align-self: flex-end;
+    }
+
+    .avatar {
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .avatar svg {
+      width: 28px;
+      height: 28px;
+    }
+
+    .message-content {
+      background-color: #ffffff;
+      padding: 12px 16px;
+      border-radius: 12px;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .message.user .message-content {
+      background-color: #18A0FB;
+      color: white;
+    }
+
+    .message.ai .message-content {
+      background-color: #F5F5F5;
+      color: #333333;
+    }
+
+    .input-container {
+      padding: 16px;
+      border-top: 1px solid #e1e1e1;
+      background: white;
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      margin-bottom: 0;
+      box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.05);
+    }
+
+    .action-buttons {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .action-button {
+      padding: 6px 12px;
+      border: 1px solid #e1e1e1;
+      border-radius: 4px;
+      background: white;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    .action-button:hover {
+      background: #f5f5f5;
+    }
+
+    .action-button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .input-row {
+      display: flex;
+      gap: 8px;
+      align-items: flex-end;
+    }
+
+    #prompt {
+      flex: 1;
+      min-height: 60px;
+      max-height: 120px;
+      padding: 8px 12px;
+      border: 1px solid #e1e1e1;
+      border-radius: 8px;
+      resize: none;
+      font-family: inherit;
+      font-size: 14px;
+    }
+
+    #generate {
+      padding: 8px 16px;
+      background-color: #18A0FB;
+      color: white;
+      border: none;
+      border-radius: 20px;
+      cursor: pointer;
+      height: 40px;
+      width: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #generate:hover {
+      background-color: #0D8DE3;
+    }
+
+    /* Add focus management styles */
+    .focus-visible:focus {
+      outline: 2px solid #18A0FB;
+      outline-offset: 2px;
+    }
+
+    /* Make sure inputs are properly accessible */
+    #prompt:focus {
+      outline: 2px solid #18A0FB;
+      border-color: #18A0FB;
+    }
+
+    /* Ensure buttons are properly accessible */
+    button:focus {
+      outline: 2px solid #18A0FB;
+      outline-offset: 2px;
+    }
+
+    /* Hide elements properly without aria-hidden */
+    .visually-hidden {
+      position: absolute !important;
+      width: 1px !important;
+      height: 1px !important;
+      padding: 0 !important;
+      margin: -1px !important;
+      overflow: hidden !important;
+      clip: rect(0, 0, 0, 0) !important;
+      white-space: nowrap !important;
+      border: 0 !important;
+    }
+
+    /* Ensure proper label visibility */
+    #prompt-label {
+      font-size: 14px;
+      color: #666666;
+      margin-bottom: 8px;
+      display: block;
+    }
+
+    /* Ensure proper focus indication for all interactive elements */
+    :focus-visible {
+      outline: 2px solid #18A0FB;
+      outline-offset: 2px;
+      border-radius: 4px;
+    }
+
+    /* Ensure proper contrast for placeholder text */
+    ::placeholder {
+      color: #666666;
+      opacity: 1;
+    }
+
+    /* Ensure proper focus management for disabled elements */
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    /* Ensure proper focus management during generation */
+    .generating {
+      pointer-events: none;
+      opacity: 0.7;
+    }
+
+    /* Remove library selection styles */
+    .library-options,
+    .library-option,
+    .confirm-library,
+    .library-dialog,
+    .overlay {
+      display: none;
+    }
+
+    /* Add loading animation styles */
+    .loading-dots {
+      display: inline-block;
+    }
+
+    .loading-dots::after {
+      content: '...';
+      animation: loading 1.5s infinite;
+      display: inline-block;
+      width: 1em;
+      text-align: left;
+    }
+
+    @keyframes loading {
+      0% {
+        content: '.';
+      }
+
+      33% {
+        content: '..';
+      }
+
+      66% {
+        content: '...';
+      }
+    }
+
+    .progress-steps {
+      margin-top: 8px;
+      font-size: 12px;
+      color: #666;
+    }
+
+    .progress-step {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-bottom: 4px;
+    }
+
+    .progress-step.completed {
+      color: #18A0FB;
+    }
+
+    .progress-step.current {
+      color: #18A0FB;
+      font-weight: 500;
+    }
+
+    .progress-step.pending {
+      color: #999;
+    }
+
+    .progress-step::before {
+      content: '';
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    .progress-step.completed::before {
+      background: #18A0FB;
+    }
+
+    .progress-step.current::before {
+      background: #18A0FB;
+      animation: pulse 1.5s infinite;
+    }
+
+    .progress-step.pending::before {
+      background: #999;
+    }
+
+    @keyframes pulse {
+      0% {
+        transform: scale(1);
+      }
+
+      50% {
+        transform: scale(1.2);
+      }
+
+      100% {
+        transform: scale(1);
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="app-container" role="application">
+    <!-- Main content wrapper -->
+    <div class="chat-interface" role="main">
+      <div class="header" role="banner">
+        <div class="header-left">
+          <div class="avatar" role="img" aria-label="Agentforce logo">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path
+                d="M17.5077 5.59604H17.5116C17.0308 4.9845 16.4616 4.44219 15.8308 3.97681C16.4847 3.86143 16.9808 3.2922 16.9808 2.60758C16.9808 1.83835 16.3577 1.21143 15.5847 1.21143C14.8116 1.21143 14.1885 1.8345 14.1885 2.60758C14.1885 2.76143 14.2193 2.90758 14.2654 3.04604C13.2731 2.57681 12.1885 2.26912 11.0539 2.14989C9.15389 1.94989 7.31927 2.28835 5.73851 3.0345C5.78081 2.89989 5.81158 2.75758 5.81158 2.60758C5.81158 1.83835 5.18851 1.21143 4.41543 1.21143C3.64235 1.21143 3.01927 1.8345 3.01927 2.60758C3.01927 3.2922 3.51158 3.85758 4.15774 3.97681C2.36543 5.29989 1.11543 7.22681 0.830813 9.46143C0.565429 11.5268 1.15389 13.596 2.49235 15.2883C4.00774 17.2037 6.36158 18.4614 8.9462 18.7345C9.30774 18.773 9.66543 18.7922 10.0193 18.7922C14.6308 18.7922 18.6231 15.6614 19.1693 11.423C19.4347 9.35758 18.8462 7.28835 17.5077 5.59604ZM10.0077 16.4076H10.0039C6.53466 16.4037 3.71158 14.0883 3.71158 11.2422C3.71158 10.3845 3.97312 9.56143 4.4462 8.83066C4.48851 9.0922 4.56543 9.31912 4.65004 9.48835C4.76543 9.71912 4.9962 9.85373 5.23851 9.85373C5.33466 9.85373 5.43466 9.8345 5.52697 9.78835C5.85389 9.63066 5.98851 9.23835 5.83851 8.91143C5.75774 8.73835 5.55004 8.16527 6.05389 7.72681C6.54235 8.16912 7.24235 8.68835 8.03081 8.9422C9.50004 9.40758 10.6116 9.1345 10.6577 9.12296C10.8808 9.06527 11.0539 8.89989 11.1231 8.68066C11.1924 8.46143 11.1424 8.22296 10.9924 8.05373C10.25 7.19989 9.8962 6.57681 9.74235 6.19989C12.75 6.60758 13.327 9.00373 13.35 9.11143C13.4154 9.41912 13.6885 9.63066 13.9924 9.63066C14.0385 9.63066 14.0808 9.62681 14.127 9.61527C14.4847 9.5422 14.7116 9.19219 14.6385 8.8345C14.5462 8.38835 14.3039 7.7845 13.8731 7.18066C15.3462 8.12681 16.3 9.59604 16.3 11.246C16.3 14.0922 13.477 16.4076 10.0077 16.4076Z"
+                fill="#0250D9" />
+            </svg>
+          </div>
+          <div>
+            UX Agent
+          </div>
+        </div>
+      </div>
+
+      <div class="chat-container" id="chat" role="log" aria-label="Chat messages">
+        <div class="message ai" role="article">
+          <div class="avatar" role="img" aria-label="AI assistant">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path
+                d="M12.1116 10.623H12.1193C11.8039 10.6499 11.5231 10.7037 11.2808 10.7807C11.2808 10.7807 10.927 10.8922 10.3847 10.9691C10.2577 10.9883 10.0962 10.9883 10.0077 10.9883H9.94235C9.85389 10.9883 9.68851 10.9807 9.56543 10.9614C9.02312 10.873 8.67312 10.7499 8.67312 10.7499C8.43081 10.673 8.15004 10.6153 7.83466 10.5807C6.10774 10.4037 5.36158 11.0614 5.31927 11.1845C5.27697 11.3076 5.46543 12.9076 5.60389 13.1614C5.73851 13.4114 5.9462 13.5576 6.13466 13.6383C6.32697 13.7191 7.90774 13.8768 8.43466 13.8037C8.96158 13.7307 9.04235 13.5537 9.18466 13.2845C9.28466 13.0922 9.54235 12.223 9.68466 11.7114C9.71927 11.6114 9.72312 11.4114 9.96543 11.396C10.2077 11.4153 10.2116 11.6191 10.2424 11.7191C10.3808 12.2307 10.6231 13.1076 10.7193 13.2999C10.8539 13.573 10.9347 13.7499 11.4616 13.8345C11.9847 13.9153 13.5693 13.7884 13.7616 13.7114C13.9539 13.6345 14.1616 13.4922 14.3 13.2422C14.4385 12.9922 14.6539 11.396 14.6154 11.273C14.577 11.146 13.8424 10.4768 12.1116 10.623Z"
+                fill="#0250D9" />
+              <path
+                d="M17.5077 5.59604H17.5116C17.0308 4.9845 16.4616 4.44219 15.8308 3.97681C16.4847 3.86143 16.9808 3.2922 16.9808 2.60758C16.9808 1.83835 16.3577 1.21143 15.5847 1.21143C14.8116 1.21143 14.1885 1.8345 14.1885 2.60758C14.1885 2.76143 14.2193 2.90758 14.2654 3.04604C13.2731 2.57681 12.1885 2.26912 11.0539 2.14989C9.15389 1.94989 7.31927 2.28835 5.73851 3.0345C5.78081 2.89989 5.81158 2.75758 5.81158 2.60758C5.81158 1.83835 5.18851 1.21143 4.41543 1.21143C3.64235 1.21143 3.01927 1.8345 3.01927 2.60758C3.01927 3.2922 3.51158 3.85758 4.15774 3.97681C2.36543 5.29989 1.11543 7.22681 0.830813 9.46143C0.565429 11.5268 1.15389 13.596 2.49235 15.2883C4.00774 17.2037 6.36158 18.4614 8.9462 18.7345C9.30774 18.773 9.66543 18.7922 10.0193 18.7922C14.6308 18.7922 18.6231 15.6614 19.1693 11.423C19.4347 9.35758 18.8462 7.28835 17.5077 5.59604ZM10.0077 16.4076H10.0039C6.53466 16.4037 3.71158 14.0883 3.71158 11.2422C3.71158 10.3845 3.97312 9.56143 4.4462 8.83066C4.48851 9.0922 4.56543 9.31912 4.65004 9.48835C4.76543 9.71912 4.9962 9.85373 5.23851 9.85373C5.33466 9.85373 5.43466 9.8345 5.52697 9.78835C5.85389 9.63066 5.98851 9.23835 5.83851 8.91143C5.75774 8.73835 5.55004 8.16527 6.05389 7.72681C6.54235 8.16912 7.24235 8.68835 8.03081 8.9422C9.50004 9.40758 10.6116 9.1345 10.6577 9.12296C10.8808 9.06527 11.0539 8.89989 11.1231 8.68066C11.1924 8.46143 11.1424 8.22296 10.9924 8.05373C10.25 7.19989 9.8962 6.57681 9.74235 6.19989C12.75 6.60758 13.327 9.00373 13.35 9.11143C13.4154 9.41912 13.6885 9.63066 13.9924 9.63066C14.0385 9.63066 14.0808 9.62681 14.127 9.61527C14.4847 9.5422 14.7116 9.19219 14.6385 8.8345C14.5462 8.38835 14.3039 7.7845 13.8731 7.18066C15.3462 8.12681 16.3 9.59604 16.3 11.246C16.3 14.0922 13.477 16.4076 10.0077 16.4076Z"
+                fill="#0250D9" />
+            </svg>
+          </div>
+          <div class="message-content">
+            👋 Hi there! I'm your design assistant. Tell me what you want to build!
+          </div>
+        </div>
+      </div>
+
+      <form class="input-container" role="form" aria-label="Message input">
+        <div class="action-buttons" role="toolbar" aria-label="Additional actions">
+          <button id="stop" class="action-button" type="button" disabled>Stop generating</button>
+        </div>
+        <div class="input-row">
+          <textarea id="prompt" name="prompt" placeholder="Describe your project needs..." role="textbox"
+            aria-labelledby="prompt-label" aria-describedby="prompt-description"></textarea>
+          <button id="generate" type="submit" aria-label="Send message">➤</button>
+        </div>
+        <div id="prompt-description" class="visually-hidden">
+          Enter your design requirements or questions here. Press Enter to send or use the send button.
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const promptInput = document.getElementById('prompt');
+    const generateBtn = document.getElementById('generate');
+    const stopBtn = document.getElementById('stop');
+    const chatBox = document.getElementById('chat');
+    const form = document.querySelector('form');
+
+    let isGenerating = false;
+
+    function handleSubmit(event) {
+      event.preventDefault();
+      const prompt = promptInput.value.trim();
+      if (!prompt || isGenerating) return;
+
+      // Remove any existing loading message
+      const existingLoadingMessage = document.getElementById('loading-message');
+      if (existingLoadingMessage) {
+        existingLoadingMessage.remove();
+      }
+
+      // Show user's prompt in chat
+      const userMessage = document.createElement('div');
+      userMessage.className = 'message user';
+      userMessage.setAttribute('role', 'article');
+      userMessage.innerHTML = `
+        <div class="message-content">${prompt}</div>
+      `;
+      chatBox.appendChild(userMessage);
+
+      // Add initial loading message
+      const loadingMessage = document.createElement('div');
+      loadingMessage.className = 'message ai';
+      loadingMessage.id = 'loading-message';
+      loadingMessage.setAttribute('role', 'article');
+      loadingMessage.innerHTML = `
+        <div class="avatar" role="img" aria-label="AI assistant">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12.1116 10.623H12.1193C11.8039 10.6499 11.5231 10.7037 11.2808 10.7807C11.2808 10.7807 10.927 10.8922 10.3847 10.9691C10.2577 10.9883 10.0962 10.9883 10.0077 10.9883H9.94235C9.85389 10.9883 9.68851 10.9807 9.56543 10.9614C9.02312 10.873 8.67312 10.7499 8.67312 10.7499C8.43081 10.673 8.15004 10.6153 7.83466 10.5807C6.10774 10.4037 5.36158 11.0614 5.31927 11.1845C5.27697 11.3076 5.46543 12.9076 5.60389 13.1614C5.73851 13.4114 5.9462 13.5576 6.13466 13.6383C6.32697 13.7191 7.90774 13.8768 8.43466 13.8037C8.96158 13.7307 9.04235 13.5537 9.18466 13.2845C9.28466 13.0922 9.54235 12.223 9.68466 11.7114C9.71927 11.6114 9.72312 11.4114 9.96543 11.396C10.2077 11.4153 10.2116 11.6191 10.2424 11.7191C10.3808 12.2307 10.6231 13.1076 10.7193 13.2999C10.8539 13.573 10.9347 13.7499 11.4616 13.8345C11.9847 13.9153 13.5693 13.7884 13.7616 13.7114C13.9539 13.6345 14.1616 13.4922 14.3 13.2422C14.4385 12.9922 14.6539 11.396 14.6154 11.273C14.577 11.146 13.8424 10.4768 12.1116 10.623Z" fill="#0250D9"/>
+            <path d="M17.5077 5.59604H17.5116C17.0308 4.9845 16.4616 4.44219 15.8308 3.97681C16.4847 3.86143 16.9808 3.2922 16.9808 2.60758C16.9808 1.83835 16.3577 1.21143 15.5847 1.21143C14.8116 1.21143 14.1885 1.8345 14.1885 2.60758C14.1885 2.76143 14.2193 2.90758 14.2654 3.04604C13.2731 2.57681 12.1885 2.26912 11.0539 2.14989C9.15389 1.94989 7.31927 2.28835 5.73851 3.0345C5.78081 2.89989 5.81158 2.75758 5.81158 2.60758C5.81158 1.83835 5.18851 1.21143 4.41543 1.21143C3.64235 1.21143 3.01927 1.8345 3.01927 2.60758C3.01927 3.2922 3.51158 3.85758 4.15774 3.97681C2.36543 5.29989 1.11543 7.22681 0.830813 9.46143C0.565429 11.5268 1.15389 13.596 2.49235 15.2883C4.00774 17.2037 6.36158 18.4614 8.9462 18.7345C9.30774 18.773 9.66543 18.7922 10.0193 18.7922C14.6308 18.7922 18.6231 15.6614 19.1693 11.423C19.4347 9.35758 18.8462 7.28835 17.5077 5.59604ZM10.0077 16.4076H10.0039C6.53466 16.4037 3.71158 14.0883 3.71158 11.2422C3.71158 10.3845 3.97312 9.56143 4.4462 8.83066C4.48851 9.0922 4.56543 9.31912 4.65004 9.48835C4.76543 9.71912 4.9962 9.85373 5.23851 9.85373C5.33466 9.85373 5.43466 9.8345 5.52697 9.78835C5.85389 9.63066 5.98851 9.23835 5.83851 8.91143C5.75774 8.73835 5.55004 8.16527 6.05389 7.72681C6.54235 8.16912 7.24235 8.68835 8.03081 8.9422C9.50004 9.40758 10.6116 9.1345 10.6577 9.12296C10.8808 9.06527 11.0539 8.89989 11.1231 8.68066C11.1924 8.46143 11.1424 8.22296 10.9924 8.05373C10.25 7.19989 9.8962 6.57681 9.74235 6.19989C12.75 6.60758 13.327 9.00373 13.35 9.11143C13.4154 9.41912 13.6885 9.63066 13.9924 9.63066C14.0385 9.63066 14.0808 9.62681 14.127 9.61527C14.4847 9.5422 14.7116 9.19219 14.6385 8.8345C14.5462 8.38835 14.3039 7.7845 13.8731 7.18066C15.3462 8.12681 16.3 9.59604 16.3 11.246C16.3 14.0922 13.477 16.4076 10.0077 16.4076Z" fill="#0250D9"/>
+          </svg>
+        </div>
+        <div class="message-content">
+          Take a deep breath, we're bringing your design to life<span class="loading-dots"></span>
+          <div class="progress-steps">
+            <div class="progress-step current">Analyzing prompt</div>
+            <div class="progress-step pending">Fetching components</div>
+            <div class="progress-step pending">Generating design</div>
+          </div>
+        </div>
+      `;
+      chatBox.appendChild(loadingMessage);
+
+      // Send to plugin directly
+      parent.postMessage({
+        pluginMessage: {
+          type: "generate",
+          prompt: prompt
+        }
+      }, "*");
+
+      // Clear input and update UI state
+      promptInput.value = "";
+      isGenerating = true;
+      stopBtn.disabled = false;
+      generateBtn.disabled = true;
+
+      // Improve focus management
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    form.addEventListener('submit', handleSubmit);
+
+    stopBtn.onclick = () => {
+      if (isGenerating) {
+        parent.postMessage({ pluginMessage: { type: "stop" } }, "*");
+
+        // Remove any existing loading or stopped messages
+        const existingLoadingMessage = document.getElementById('loading-message');
+        if (existingLoadingMessage) {
+          existingLoadingMessage.remove();
+        }
+        const existingStoppedMessage = document.querySelector('.message.ai .message-content:contains("❌ Generation stopped")');
+        if (existingStoppedMessage) {
+          existingStoppedMessage.closest('.message').remove();
+        }
+
+        // Add stopped message
+        const stoppedMessage = document.createElement('div');
+        stoppedMessage.className = 'message ai';
+        stoppedMessage.setAttribute('role', 'article');
+        stoppedMessage.innerHTML = `
+          <div class="avatar" role="img" aria-label="AI assistant">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12.1116 10.623H12.1193C11.8039 10.6499 11.5231 10.7037 11.2808 10.7807C11.2808 10.7807 10.927 10.8922 10.3847 10.9691C10.2577 10.9883 10.0962 10.9883 10.0077 10.9883H9.94235C9.85389 10.9883 9.68851 10.9807 9.56543 10.9614C9.02312 10.873 8.67312 10.7499 8.67312 10.7499C8.43081 10.673 8.15004 10.6153 7.83466 10.5807C6.10774 10.4037 5.36158 11.0614 5.31927 11.1845C5.27697 11.3076 5.46543 12.9076 5.60389 13.1614C5.73851 13.4114 5.9462 13.5576 6.13466 13.6383C6.32697 13.7191 7.90774 13.8768 8.43466 13.8037C8.96158 13.7307 9.04235 13.5537 9.18466 13.2845C9.28466 13.0922 9.54235 12.223 9.68466 11.7114C9.71927 11.6114 9.72312 11.4114 9.96543 11.396C10.2077 11.4153 10.2116 11.6191 10.2424 11.7191C10.3808 12.2307 10.6231 13.1076 10.7193 13.2999C10.8539 13.573 10.9347 13.7499 11.4616 13.8345C11.9847 13.9153 13.5693 13.7884 13.7616 13.7114C13.9539 13.6345 14.1616 13.4922 14.3 13.2422C14.4385 12.9922 14.6539 11.396 14.6154 11.273C14.577 11.146 13.8424 10.4768 12.1116 10.623Z" fill="#0250D9"/>
+              <path d="M17.5077 5.59604H17.5116C17.0308 4.9845 16.4616 4.44219 15.8308 3.97681C16.4847 3.86143 16.9808 3.2922 16.9808 2.60758C16.9808 1.83835 16.3577 1.21143 15.5847 1.21143C14.8116 1.21143 14.1885 1.8345 14.1885 2.60758C14.1885 2.76143 14.2193 2.90758 14.2654 3.04604C13.2731 2.57681 12.1885 2.26912 11.0539 2.14989C9.15389 1.94989 7.31927 2.28835 5.73851 3.0345C5.78081 2.89989 5.81158 2.75758 5.81158 2.60758C5.81158 1.83835 5.18851 1.21143 4.41543 1.21143C3.64235 1.21143 3.01927 1.8345 3.01927 2.60758C3.01927 3.2922 3.51158 3.85758 4.15774 3.97681C2.36543 5.29989 1.11543 7.22681 0.830813 9.46143C0.565429 11.5268 1.15389 13.596 2.49235 15.2883C4.00774 17.2037 6.36158 18.4614 8.9462 18.7345C9.30774 18.773 9.66543 18.7922 10.0193 18.7922C14.6308 18.7922 18.6231 15.6614 19.1693 11.423C19.4347 9.35758 18.8462 7.28835 17.5077 5.59604ZM10.0077 16.4076H10.0039C6.53466 16.4037 3.71158 14.0883 3.71158 11.2422C3.71158 10.3845 3.97312 9.56143 4.4462 8.83066C4.48851 9.0922 4.56543 9.31912 4.65004 9.48835C4.76543 9.71912 4.9962 9.85373 5.23851 9.85373C5.33466 9.85373 5.43466 9.8345 5.52697 9.78835C5.85389 9.63066 5.98851 9.23835 5.83851 8.91143C5.75774 8.73835 5.55004 8.16527 6.05389 7.72681C6.54235 8.16912 7.24235 8.68835 8.03081 8.9422C9.50004 9.40758 10.6116 9.1345 10.6577 9.12296C10.8808 9.06527 11.0539 8.89989 11.1231 8.68066C11.1924 8.46143 11.1424 8.22296 10.9924 8.05373C10.25 7.19989 9.8962 6.57681 9.74235 6.19989C12.75 6.60758 13.327 9.00373 13.35 9.11143C13.4154 9.41912 13.6885 9.63066 13.9924 9.63066C14.0385 9.63066 14.0808 9.62681 14.127 9.61527C14.4847 9.5422 14.7116 9.19219 14.6385 8.8345C14.5462 8.38835 14.3039 7.7845 13.8731 7.18066C15.3462 8.12681 16.3 9.59604 16.3 11.246C16.3 14.0922 13.477 16.4076 10.0077 16.4076Z" fill="#0250D9"/>
+            </svg>
+          </div>
+          <div class="message-content">
+            ❌ Generation stopped
+          </div>
+        `;
+        chatBox.appendChild(stoppedMessage);
+        isGenerating = false;
+        stopBtn.disabled = true;
+        generateBtn.disabled = false;
+
+        // Scroll to bottom
+        chatBox.scrollTop = chatBox.scrollHeight;
+      }
+    };
+
+    // Handle messages from the plugin
+    window.onmessage = async (event) => {
+      const message = event.data.pluginMessage;
+      if (!message) return;
+
+      if (message.type === 'preview') {
+        // Remove loading message
+        const existingLoadingMessage = document.getElementById('loading-message');
+        if (existingLoadingMessage) {
+          existingLoadingMessage.remove();
+        }
+
+        // Add preview message
+        const previewMessage = document.createElement('div');
+        previewMessage.className = 'message ai';
+        previewMessage.setAttribute('role', 'article');
+        previewMessage.innerHTML = `
+          <div class="avatar" role="img" aria-label="AI assistant">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12.1116 10.623H12.1193C11.8039 10.6499 11.5231 10.7037 11.2808 10.7807C11.2808 10.7807 10.927 10.8922 10.3847 10.9691C10.2577 10.9883 10.0962 10.9883 10.0077 10.9883H9.94235C9.85389 10.9883 9.68851 10.9807 9.56543 10.9614C9.02312 10.873 8.67312 10.7499 8.67312 10.7499C8.43081 10.673 8.15004 10.6153 7.83466 10.5807C6.10774 10.4037 5.36158 11.0614 5.31927 11.1845C5.27697 11.3076 5.46543 12.9076 5.60389 13.1614C5.73851 13.4114 5.9462 13.5576 6.13466 13.6383C6.32697 13.7191 7.90774 13.8768 8.43466 13.8037C8.96158 13.7307 9.04235 13.5537 9.18466 13.2845C9.28466 13.0922 9.54235 12.223 9.68466 11.7114C9.71927 11.6114 9.72312 11.4114 9.96543 11.396C10.2077 11.4153 10.2116 11.6191 10.2424 11.7191C10.3808 12.2307 10.6231 13.1076 10.7193 13.2999C10.8539 13.573 10.9347 13.7499 11.4616 13.8345C11.9847 13.9153 13.5693 13.7884 13.7616 13.7114C13.9539 13.6345 14.1616 13.4922 14.3 13.2422C14.4385 12.9922 14.6539 11.396 14.6154 11.273C14.577 11.146 13.8424 10.4768 12.1116 10.623Z" fill="#0250D9"/>
+              <path d="M17.5077 5.59604H17.5116C17.0308 4.9845 16.4616 4.44219 15.8308 3.97681C16.4847 3.86143 16.9808 3.2922 16.9808 2.60758C16.9808 1.83835 16.3577 1.21143 15.5847 1.21143C14.8116 1.21143 14.1885 1.8345 14.1885 2.60758C14.1885 2.76143 14.2193 2.90758 14.2654 3.04604C13.2731 2.57681 12.1885 2.26912 11.0539 2.14989C9.15389 1.94989 7.31927 2.28835 5.73851 3.0345C5.78081 2.89989 5.81158 2.75758 5.81158 2.60758C5.81158 1.83835 5.18851 1.21143 4.41543 1.21143C3.64235 1.21143 3.01927 1.8345 3.01927 2.60758C3.01927 3.2922 3.51158 3.85758 4.15774 3.97681C2.36543 5.29989 1.11543 7.22681 0.830813 9.46143C0.565429 11.5268 1.15389 13.596 2.49235 15.2883C4.00774 17.2037 6.36158 18.4614 8.9462 18.7345C9.30774 18.773 9.66543 18.7922 10.0193 18.7922C14.6308 18.7922 18.6231 15.6614 19.1693 11.423C19.4347 9.35758 18.8462 7.28835 17.5077 5.59604ZM10.0077 16.4076H10.0039C6.53466 16.4037 3.71158 14.0883 3.71158 11.2422C3.71158 10.3845 3.97312 9.56143 4.4462 8.83066C4.48851 9.0922 4.56543 9.31912 4.65004 9.48835C4.76543 9.71912 4.9962 9.85373 5.23851 9.85373C5.33466 9.85373 5.43466 9.8345 5.52697 9.78835C5.85389 9.63066 5.98851 9.23835 5.83851 8.91143C5.75774 8.73835 5.55004 8.16527 6.05389 7.72681C6.54235 8.16912 7.24235 8.68835 8.03081 8.9422C9.50004 9.40758 10.6116 9.1345 10.6577 9.12296C10.8808 9.06527 11.0539 8.89989 11.1231 8.68066C11.1924 8.46143 11.1424 8.22296 10.9924 8.05373C10.25 7.19989 9.8962 6.57681 9.74235 6.19989C12.75 6.60758 13.327 9.00373 13.35 9.11143C13.4154 9.41912 13.6885 9.63066 13.9924 9.63066C14.0385 9.63066 14.0808 9.62681 14.127 9.61527C14.4847 9.5422 14.7116 9.19219 14.6385 8.8345C14.5462 8.38835 14.3039 7.7845 13.8731 7.18066C15.3462 8.12681 16.3 9.59604 16.3 11.246C16.3 14.0922 13.477 16.4076 10.0077 16.4076Z" fill="#0250D9"/>
+            </svg>
+          </div>
+          <div class="message-content">
+            <pre style="white-space: pre-wrap; font-family: inherit; margin: 0;">${message.preview}</pre>
+          </div>
+        `;
+        chatBox.appendChild(previewMessage);
+
+        // Add generation progress message
+        const generationProgressMessage = document.createElement('div');
+        generationProgressMessage.className = 'message ai';
+        generationProgressMessage.id = 'loading-message';
+        generationProgressMessage.setAttribute('role', 'article');
+        generationProgressMessage.innerHTML = `
+          <div class="avatar" role="img" aria-label="AI assistant">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12.1116 10.623H12.1193C11.8039 10.6499 11.5231 10.7037 11.2808 10.7807C11.2808 10.7807 10.927 10.8922 10.3847 10.9691C10.2577 10.9883 10.0962 10.9883 10.0077 10.9883H9.94235C9.85389 10.9883 9.68851 10.9807 9.56543 10.9614C9.02312 10.873 8.67312 10.7499 8.67312 10.7499C8.43081 10.673 8.15004 10.6153 7.83466 10.5807C6.10774 10.4037 5.36158 11.0614 5.31927 11.1845C5.27697 11.3076 5.46543 12.9076 5.60389 13.1614C5.73851 13.4114 5.9462 13.5576 6.13466 13.6383C6.32697 13.7191 7.90774 13.8768 8.43466 13.8037C8.96158 13.7307 9.04235 13.5537 9.18466 13.2845C9.28466 13.0922 9.54235 12.223 9.68466 11.7114C9.71927 11.6114 9.72312 11.4114 9.96543 11.396C10.2077 11.4153 10.2116 11.6191 10.2424 11.7191C10.3808 12.2307 10.6231 13.1076 10.7193 13.2999C10.8539 13.573 10.9347 13.7499 11.4616 13.8345C11.9847 13.9153 13.5693 13.7884 13.7616 13.7114C13.9539 13.6345 14.1616 13.4922 14.3 13.2422C14.4385 12.9922 14.6539 11.396 14.6154 11.273C14.577 11.146 13.8424 10.4768 12.1116 10.623Z" fill="#0250D9"/>
+              <path d="M17.5077 5.59604H17.5116C17.0308 4.9845 16.4616 4.44219 15.8308 3.97681C16.4847 3.86143 16.9808 3.2922 16.9808 2.60758C16.9808 1.83835 16.3577 1.21143 15.5847 1.21143C14.8116 1.21143 14.1885 1.8345 14.1885 2.60758C14.1885 2.76143 14.2193 2.90758 14.2654 3.04604C13.2731 2.57681 12.1885 2.26912 11.0539 2.14989C9.15389 1.94989 7.31927 2.28835 5.73851 3.0345C5.78081 2.89989 5.81158 2.75758 5.81158 2.60758C5.81158 1.83835 5.18851 1.21143 4.41543 1.21143C3.64235 1.21143 3.01927 1.8345 3.01927 2.60758C3.01927 3.2922 3.51158 3.85758 4.15774 3.97681C2.36543 5.29989 1.11543 7.22681 0.830813 9.46143C0.565429 11.5268 1.15389 13.596 2.49235 15.2883C4.00774 17.2037 6.36158 18.4614 8.9462 18.7345C9.30774 18.773 9.66543 18.7922 10.0193 18.7922C14.6308 18.7922 18.6231 15.6614 19.1693 11.423C19.4347 9.35758 18.8462 7.28835 17.5077 5.59604ZM10.0077 16.4076H10.0039C6.53466 16.4037 3.71158 14.0883 3.71158 11.2422C3.71158 10.3845 3.97312 9.56143 4.4462 8.83066C4.48851 9.0922 4.56543 9.31912 4.65004 9.48835C4.76543 9.71912 4.9962 9.85373 5.23851 9.85373C5.33466 9.85373 5.43466 9.8345 5.52697 9.78835C5.85389 9.63066 5.98851 9.23835 5.83851 8.91143C5.75774 8.73835 5.55004 8.16527 6.05389 7.72681C6.54235 8.16912 7.24235 8.68835 8.03081 8.9422C9.50004 9.40758 10.6116 9.1345 10.6577 9.12296C10.8808 9.06527 11.0539 8.89989 11.1231 8.68066C11.1924 8.46143 11.1424 8.22296 10.9924 8.05373C10.25 7.19989 9.8962 6.57681 9.74235 6.19989C12.75 6.60758 13.327 9.00373 13.35 9.11143C13.4154 9.41912 13.6885 9.63066 13.9924 9.63066C14.0385 9.63066 14.0808 9.62681 14.127 9.61527C14.4847 9.5422 14.7116 9.19219 14.6385 8.8345C14.5462 8.38835 14.3039 7.7845 13.8731 7.18066C15.3462 8.12681 16.3 9.59604 16.3 11.246C16.3 14.0922 13.477 16.4076 10.0077 16.4076Z" fill="#0250D9"/>
+            </svg>
+          </div>
+          <div class="message-content">
+            <div class="progress-container">
+              <div class="progress-steps">
+                <div class="progress-step current">Analyzing prompt</div>
+                <div class="progress-step pending">Fetching components</div>
+                <div class="progress-step pending">Generating design</div>
+              </div>
+            </div>
+          </div>
+        `;
+        chatBox.appendChild(generationProgressMessage);
+        chatBox.scrollTop = chatBox.scrollHeight;
+      } else if (message.type === 'complete') {
+        // Remove loading message
+        const loadingMessage = document.getElementById('loading-message');
+        if (loadingMessage) {
+          loadingMessage.remove();
+        }
+
+        // Add completion message
+        const completionMessage = document.createElement('div');
+        completionMessage.className = 'message ai';
+        completionMessage.setAttribute('role', 'article');
+        completionMessage.innerHTML = `
+          <div class="avatar" role="img" aria-label="AI assistant">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12.1116 10.623H12.1193C11.8039 10.6499 11.5231 10.7037 11.2808 10.7807C11.2808 10.7807 10.927 10.8922 10.3847 10.9691C10.2577 10.9883 10.0962 10.9883 10.0077 10.9883H9.94235C9.85389 10.9883 9.68851 10.9807 9.56543 10.9614C9.02312 10.873 8.67312 10.7499 8.67312 10.7499C8.43081 10.673 8.15004 10.6153 7.83466 10.5807C6.10774 10.4037 5.36158 11.0614 5.31927 11.1845C5.27697 11.3076 5.46543 12.9076 5.60389 13.1614C5.73851 13.4114 5.9462 13.5576 6.13466 13.6383C6.32697 13.7191 7.90774 13.8768 8.43466 13.8037C8.96158 13.7307 9.04235 13.5537 9.18466 13.2845C9.28466 13.0922 9.54235 12.223 9.68466 11.7114C9.71927 11.6114 9.72312 11.4114 9.96543 11.396C10.2077 11.4153 10.2116 11.6191 10.2424 11.7191C10.3808 12.2307 10.6231 13.1076 10.7193 13.2999C10.8539 13.573 10.9347 13.7499 11.4616 13.8345C11.9847 13.9153 13.5693 13.7884 13.7616 13.7114C13.9539 13.6345 14.1616 13.4922 14.3 13.2422C14.4385 12.9922 14.6539 11.396 14.6154 11.273C14.577 11.146 13.8424 10.4768 12.1116 10.623Z" fill="#0250D9"/>
+              <path d="M17.5077 5.59604H17.5116C17.0308 4.9845 16.4616 4.44219 15.8308 3.97681C16.4847 3.86143 16.9808 3.2922 16.9808 2.60758C16.9808 1.83835 16.3577 1.21143 15.5847 1.21143C14.8116 1.21143 14.1885 1.8345 14.1885 2.60758C14.1885 2.76143 14.2193 2.90758 14.2654 3.04604C13.2731 2.57681 12.1885 2.26912 11.0539 2.14989C9.15389 1.94989 7.31927 2.28835 5.73851 3.0345C5.78081 2.89989 5.81158 2.75758 5.81158 2.60758C5.81158 1.83835 5.18851 1.21143 4.41543 1.21143C3.64235 1.21143 3.01927 1.8345 3.01927 2.60758C3.01927 3.2922 3.51158 3.85758 4.15774 3.97681C2.36543 5.29989 1.11543 7.22681 0.830813 9.46143C0.565429 11.5268 1.15389 13.596 2.49235 15.2883C4.00774 17.2037 6.36158 18.4614 8.9462 18.7345C9.30774 18.773 9.66543 18.7922 10.0193 18.7922C14.6308 18.7922 18.6231 15.6614 19.1693 11.423C19.4347 9.35758 18.8462 7.28835 17.5077 5.59604ZM10.0077 16.4076H10.0039C6.53466 16.4037 3.71158 14.0883 3.71158 11.2422C3.71158 10.3845 3.97312 9.56143 4.4462 8.83066C4.48851 9.0922 4.56543 9.31912 4.65004 9.48835C4.76543 9.71912 4.9962 9.85373 5.23851 9.85373C5.33466 9.85373 5.43466 9.8345 5.52697 9.78835C5.85389 9.63066 5.98851 9.23835 5.83851 8.91143C5.75774 8.73835 5.55004 8.16527 6.05389 7.72681C6.54235 8.16912 7.24235 8.68835 8.03081 8.9422C9.50004 9.40758 10.6116 9.1345 10.6577 9.12296C10.8808 9.06527 11.0539 8.89989 11.1231 8.68066C11.1924 8.46143 11.1424 8.22296 10.9924 8.05373C10.25 7.19989 9.8962 6.57681 9.74235 6.19989C12.75 6.60758 13.327 9.00373 13.35 9.11143C13.4154 9.41912 13.6885 9.63066 13.9924 9.63066C14.0385 9.63066 14.0808 9.62681 14.127 9.61527C14.4847 9.5422 14.7116 9.19219 14.6385 8.8345C14.5462 8.38835 14.3039 7.7845 13.8731 7.18066C15.3462 8.12681 16.3 9.59604 16.3 11.246C16.3 14.0922 13.477 16.4076 10.0077 16.4076Z" fill="#0250D9"/>
+            </svg>
+          </div>
+          <div class="message-content">
+            ${message.success ? '✅ Design generated successfully!' : '❌ Generation stopped'}
+          </div>
+        `;
+        chatBox.appendChild(completionMessage);
+        isGenerating = false;
+        stopBtn.disabled = true;
+        generateBtn.disabled = false;
+        chatBox.scrollTop = chatBox.scrollHeight;
+      }
+    };
+
+    // Handle enter key
+    promptInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        form.dispatchEvent(new Event('submit'));
+      }
+    });
+
+    // Initialize focus
+    promptInput.focus();
+  </script>
+</body>
+
+</html>

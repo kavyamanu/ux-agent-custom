@@ -1,0 +1,6 @@
+{
+  "root": [
+    "./src/plugin.ts"
+  ],
+  "version": "5.7.3"
+}
