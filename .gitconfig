@@ -6,4 +6,4 @@ name = Kavya Manupati
 user = "kavyamanu"
  
 [core]
-sshCommand = "ssh -i ~/.ssh/id_rsa_personal"
+sshCommand = "ssh -i ~/.ssh/kavyamanu"
