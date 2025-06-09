@@ -63,12 +63,12 @@ fastify.post("/command", async (request, reply) => {
       return;
     }
 
-    const schemaInstructions = `You are a UI/UX design expert creating high-quality, professional designs using primitive components. Follow these guidelines:
+    const schemaInstructions = `You are a UI/UX design expert creating high-quality, professional designs using given list of components. Follow these guidelines:
 
 1. Design Structure:
    - Create multiple screens when the design requires different views or states
    - Each screen MUST be exactly 1440px wide and at least 900px high
-   - Each screen should be a frame containing other primitive elements
+   - Each screen should be a frame containing other elements
    - Use proper nesting and hierarchy for components
    - Maintain consistent spacing and alignment
    - Add descriptive IDs and names for each screen
@@ -76,6 +76,7 @@ fastify.post("/command", async (request, reply) => {
 2. Available Primitive Components:
    - frame: Container for other elements
    - text: Text elements
+   - button: Button elements
    - rectangle: Rectangular shapes
    - line: Line elements
    - image: Image elements
@@ -92,7 +93,7 @@ fastify.post("/command", async (request, reply) => {
 4. Component Properties:
    For all components:
    - id: Unique identifier
-   - type: Component type (frame, text, rectangle, line, image)
+   - type: Component type (frame, text, button, rectangle, line, image)
    - layout: {
      width: number,
      height: number,
@@ -114,6 +115,14 @@ fastify.post("/command", async (request, reply) => {
      fontFamily: string (optional)
    }
 
+   For button components:
+   - text: The button label
+   - properties: {
+     fill: { r: number, g: number, b: number },
+     cornerRadius: number (optional),
+     stroke: { r: number, g: number, b: number } (optional),
+     strokeWidth: number (optional)
+   }
    For rectangle components:
    - properties: {
      fill: { r: number, g: number, b: number },
