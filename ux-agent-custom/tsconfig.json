@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "lib": ["ES2021"],
+    "target": "ESNext",
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "strict": true,
+    "moduleResolution": "node",
+    "typeRoots": ["./node_modules/@types", "./node_modules/@figma"]
+  }
+}
