@@ -48,21 +48,66 @@ interface ImageProperties {
   scaleMode?: 'fill' | 'fit' | 'tile' | 'stretch';
 }
 
+interface InputProperties {
+  label?: string;
+  placeholder?: string;
+  value?: string;
+  type?: 'text' | 'email' | 'password' | 'number';
+  required?: boolean;
+  disabled?: boolean;
+}
+
+interface TabProperties {
+  label: string;
+  selected?: boolean;
+}
+
+interface DividerProperties {
+  orientation?: 'horizontal' | 'vertical';
+  color?: Color;
+  thickness?: number;
+}
+
+interface ListProperties {
+  items: Node[];
+  ordered?: boolean;
+}
+
+interface TableProperties {
+  columns: string[];
+  rows: string[][];
+}
+
+interface HeaderFooterProperties {
+  text?: string;
+  backgroundColor?: Color;
+}
+
 interface NodeProperties {
   text?: TextProperties;
   rectangle?: RectangleProperties;
   line?: LineProperties;
   image?: ImageProperties;
+  fill?: Color;
+  cornerRadius?: number;
+  shadow?: boolean;
+  input?: InputProperties;
+  tab?: TabProperties;
+  divider?: DividerProperties;
+  list?: ListProperties;
+  table?: TableProperties;
+  header?: HeaderFooterProperties;
+  footer?: HeaderFooterProperties;
 }
 
 interface Node {
   id: string;
-  type: 'frame' | 'text' | 'rectangle' | 'line' | 'image' | 'button';
+  type: 'frame' | 'text' | 'rectangle' | 'line' | 'image' | 'button' | 'card' | 'input' | 'tab' | 'divider' | 'list' | 'table' | 'header' | 'footer';
   name?: string;
   layout?: Layout;
   properties?: NodeProperties;
   children?: Node[];
-  text?: string; // for text nodes and button label
+  text?: string;
 }
 
 interface Design {
@@ -209,6 +254,30 @@ async function renderNode(data: Node): Promise<SceneNode> {
     case 'button':
       node = await renderButton(data);
       break;
+    case 'card':
+      node = await renderCard(data);
+      break;
+    case 'input':
+      node = await renderInput(data);
+      break;
+    case 'tab':
+      node = await renderTab(data);
+      break;
+    case 'divider':
+      node = await renderDivider(data);
+      break;
+    case 'list':
+      node = await renderList(data);
+      break;
+    case 'table':
+      node = await renderTable(data);
+      break;
+    case 'header':
+      node = await renderHeader(data);
+      break;
+    case 'footer':
+      node = await renderFooter(data);
+      break;
     default:
       throw new Error(`Unsupported node type: ${data.type}`);
   }
@@ -223,8 +292,8 @@ async function renderNode(data: Node): Promise<SceneNode> {
     await applyLayout(node, data.layout);
   }
 
-  // Render children if this is a frame
-  if ((data.type === 'frame' || data.type === 'button') && data.children && node.type === 'FRAME') {
+  // Only render children for frame type nodes
+  if (data.type === 'frame' && data.children && node.type === 'FRAME') {
     const frameNode = node as FrameNode;
     for (const child of data.children) {
       const childNode = await renderNode(child);
@@ -462,6 +531,308 @@ async function renderButton(data: Node): Promise<FrameNode> {
   buttonFrame.appendChild(textNode);
 
   return buttonFrame;
+}
+
+// Function to render a card
+async function renderCard(data: Node): Promise<FrameNode> {
+  const card = figma.createFrame();
+  card.name = data.name || data.id || 'Card';
+
+  // Set size
+  const width = (data.layout && data.layout.width) || 300;
+  const height = (data.layout && data.layout.height) || 200;
+  card.resize(width, height);
+
+  // Set background color, border radius, and shadow
+  let fill = { r: 1, g: 1, b: 1 };
+  let cornerRadius = 12;
+  let shadow = false;
+  if (data.properties) {
+    if (data.properties.fill) fill = data.properties.fill;
+    if (typeof data.properties.cornerRadius === 'number') cornerRadius = data.properties.cornerRadius;
+    if (typeof data.properties.shadow === 'boolean') shadow = data.properties.shadow;
+  }
+  card.fills = [{ type: 'SOLID', color: fill }];
+  card.cornerRadius = cornerRadius;
+  if (shadow) {
+    card.effects = [{ type: 'DROP_SHADOW', color: { r: 0, g: 0, b: 0, a: 0.15 }, offset: { x: 0, y: 4 }, radius: 12, spread: 0, visible: true, blendMode: 'NORMAL' }];
+  }
+
+  // Layout children vertically by default
+  card.layoutMode = 'VERTICAL';
+  card.primaryAxisAlignItems = 'MIN';
+  card.counterAxisAlignItems = 'MIN';
+  card.paddingLeft = 24;
+  card.paddingRight = 24;
+  card.paddingTop = 24;
+  card.paddingBottom = 24;
+  card.itemSpacing = 16;
+
+  // Render children
+  if (data.children && Array.isArray(data.children)) {
+    for (const child of data.children) {
+      const childNode = await renderNode(child);
+      card.appendChild(childNode);
+    }
+  }
+
+  return card;
+}
+
+// Function to render an input
+async function renderInput(data: Node): Promise<FrameNode> {
+  const frame = figma.createFrame();
+  frame.layoutMode = 'VERTICAL';
+  frame.primaryAxisAlignItems = 'MIN';
+  frame.counterAxisAlignItems = 'MIN';
+  frame.itemSpacing = 4;
+  frame.paddingLeft = 0;
+  frame.paddingRight = 0;
+  frame.paddingTop = 0;
+  frame.paddingBottom = 0;
+  frame.resize(240, 48);
+
+  // Label
+  if (data.properties && data.properties.input && data.properties.input.label) {
+    const labelNode: Node = {
+      id: data.id + '-label',
+      type: 'text',
+      text: data.properties.input.label,
+      properties: { text: { fontSize: 14, color: { r: 0.2, g: 0.2, b: 0.2 } } },
+      layout: { width: 240, height: 20 },
+    };
+    const label = await renderText(labelNode);
+    frame.appendChild(label);
+  }
+  // Input box
+  const inputRect = figma.createRectangle();
+  inputRect.resize(240, 28);
+  inputRect.cornerRadius = 6;
+  inputRect.fills = [{ type: 'SOLID', color: { r: 0.97, g: 0.97, b: 0.97 } }];
+  inputRect.strokes = [{ type: 'SOLID', color: { r: 0.8, g: 0.8, b: 0.8 } }];
+  inputRect.strokeWeight = 1;
+  frame.appendChild(inputRect);
+  // Placeholder/value
+  if (data.properties && data.properties.input && (data.properties.input.placeholder || data.properties.input.value)) {
+    const textNode = figma.createText();
+    await figma.loadFontAsync({ family: "Inter", style: "Regular" });
+    textNode.fontName = { family: "Inter", style: "Regular" };
+    textNode.characters = data.properties.input.value || data.properties.input.placeholder || '';
+    textNode.fontSize = 14;
+    textNode.fills = [{ type: 'SOLID', color: { r: 0.5, g: 0.5, b: 0.5 } }];
+    textNode.x = 8;
+    textNode.y = 24;
+    frame.appendChild(textNode);
+  }
+  return frame;
+}
+
+// Function to render a tab
+async function renderTab(data: Node): Promise<FrameNode> {
+  const tab = figma.createFrame();
+  tab.layoutMode = 'HORIZONTAL';
+  tab.primaryAxisAlignItems = 'CENTER';
+  tab.counterAxisAlignItems = 'CENTER';
+  tab.paddingLeft = 16;
+  tab.paddingRight = 16;
+  tab.paddingTop = 8;
+  tab.paddingBottom = 8;
+  tab.itemSpacing = 8;
+  tab.resize(120, 36);
+  let fill = { r: 0.95, g: 0.95, b: 0.95 };
+  if (data.properties && data.properties.tab && data.properties.tab.selected) {
+    fill = { r: 0.1, g: 0.5, b: 0.9 };
+  }
+  tab.fills = [{ type: 'SOLID', color: fill }];
+  tab.cornerRadius = 8;
+  // Label
+  if (data.properties && data.properties.tab && data.properties.tab.label) {
+    const labelNode: Node = {
+      id: data.id + '-tab-label',
+      type: 'text',
+      text: data.properties.tab.label,
+      properties: { text: { fontSize: 14, color: data.properties.tab.selected ? { r: 1, g: 1, b: 1 } : { r: 0.2, g: 0.2, b: 0.2 } } },
+      layout: { width: 80, height: 20 },
+    };
+    const label = await renderText(labelNode);
+    tab.appendChild(label);
+  }
+  return tab;
+}
+
+// Function to render a divider
+async function renderDivider(data: Node): Promise<LineNode> {
+  const line = figma.createLine();
+  const color = (data.properties && data.properties.divider && data.properties.divider.color) || { r: 0.8, g: 0.8, b: 0.8 };
+  const thickness = (data.properties && data.properties.divider && data.properties.divider.thickness) || 1;
+  line.strokes = [{ type: 'SOLID', color }];
+  line.strokeWeight = thickness;
+  if (data.layout && data.layout.width) {
+    line.resize(data.layout.width, thickness);
+  }
+  return line;
+}
+
+// Function to render a list
+async function renderList(data: Node): Promise<FrameNode> {
+  const frame = figma.createFrame();
+  frame.layoutMode = 'VERTICAL';
+  frame.primaryAxisAlignItems = 'MIN';
+  frame.counterAxisAlignItems = 'MIN';
+  frame.itemSpacing = 8;
+  frame.paddingLeft = 0;
+  frame.paddingRight = 0;
+  frame.paddingTop = 0;
+  frame.paddingBottom = 0;
+  frame.resize(240, 100);
+  // Only render from properties.list, never from children
+  if (data.properties && data.properties.list && Array.isArray(data.properties.list)) {
+    let idx = 1;
+    for (const item of data.properties.list) {
+      let itemNode: SceneNode;
+      if (typeof item === 'string') {
+        // If item is a string, create a text node
+        const textNode: Node = {
+          id: data.id + '-item-' + idx,
+          type: 'text',
+          text: item,
+          properties: { text: { fontSize: 14, color: { r: 0.2, g: 0.2, b: 0.2 } } },
+          layout: { width: 120, height: 20 }
+        };
+        itemNode = await renderText(textNode);
+      } else {
+        // Otherwise, treat as a Node object
+        itemNode = await renderNode(item);
+      }
+      // Optionally add bullet or number
+      if (data.properties.list.ordered) {
+        const bullet = figma.createText();
+        await figma.loadFontAsync({ family: "Inter", style: "Regular" });
+        bullet.fontName = { family: "Inter", style: "Regular" };
+        bullet.characters = idx + '.';
+        bullet.fontSize = 14;
+        bullet.fills = [{ type: 'SOLID', color: { r: 0.2, g: 0.2, b: 0.2 } }];
+        frame.appendChild(bullet);
+        idx++;
+      }
+      frame.appendChild(itemNode);
+      idx++;
+    }
+  }
+  return frame;
+}
+
+// Function to render a table
+async function renderTable(data: Node): Promise<FrameNode> {
+  const frame = figma.createFrame();
+  frame.layoutMode = 'VERTICAL';
+  frame.primaryAxisAlignItems = 'MIN';
+  frame.counterAxisAlignItems = 'MIN';
+  frame.itemSpacing = 0;
+  frame.paddingLeft = 0;
+  frame.paddingRight = 0;
+  frame.paddingTop = 0;
+  frame.paddingBottom = 0;
+  frame.resize(400, 200);
+  // Only render from properties.table, never from children
+  if (data.properties && data.properties.table) {
+    const { columns, rows } = data.properties.table;
+    // Header row
+    const headerRow = figma.createFrame();
+    headerRow.layoutMode = 'HORIZONTAL';
+    headerRow.primaryAxisAlignItems = 'MIN';
+    headerRow.counterAxisAlignItems = 'MIN';
+    headerRow.itemSpacing = 0;
+    for (const col of columns) {
+      const cell = figma.createText();
+      await figma.loadFontAsync({ family: "Inter", style: "Bold" });
+      cell.fontName = { family: "Inter", style: "Bold" };
+      cell.characters = col;
+      cell.fontSize = 14;
+      cell.fills = [{ type: 'SOLID', color: { r: 0.1, g: 0.1, b: 0.1 } }];
+      cell.resize(100, 24);
+      headerRow.appendChild(cell);
+    }
+    frame.appendChild(headerRow);
+    // Data rows
+    for (const row of rows) {
+      const rowFrame = figma.createFrame();
+      rowFrame.layoutMode = 'HORIZONTAL';
+      rowFrame.primaryAxisAlignItems = 'MIN';
+      rowFrame.counterAxisAlignItems = 'MIN';
+      rowFrame.itemSpacing = 0;
+      for (const cellText of row) {
+        const cell = figma.createText();
+        await figma.loadFontAsync({ family: "Inter", style: "Regular" });
+        cell.fontName = { family: "Inter", style: "Regular" };
+        cell.characters = cellText;
+        cell.fontSize = 14;
+        cell.fills = [{ type: 'SOLID', color: { r: 0.2, g: 0.2, b: 0.2 } }];
+        cell.resize(100, 24);
+        rowFrame.appendChild(cell);
+      }
+      frame.appendChild(rowFrame);
+    }
+  }
+  return frame;
+}
+
+// Function to render a header
+async function renderHeader(data: Node): Promise<FrameNode> {
+  const frame = figma.createFrame();
+  frame.layoutMode = 'HORIZONTAL';
+  frame.primaryAxisAlignItems = 'CENTER';
+  frame.counterAxisAlignItems = 'CENTER';
+  frame.paddingLeft = 32;
+  frame.paddingRight = 32;
+  frame.paddingTop = 16;
+  frame.paddingBottom = 16;
+  frame.itemSpacing = 64;
+  frame.resize(1440, 64);
+  let fill = { r: 0.97, g: 0.97, b: 0.97 };
+  if (data.properties && data.properties.header && data.properties.header.backgroundColor) {
+    fill = data.properties.header.backgroundColor;
+  }
+  frame.fills = [{ type: 'SOLID', color: fill }];
+
+  // Render children (e.g., nav, logo, etc.)
+  if (data.children && Array.isArray(data.children)) {
+    for (const child of data.children) {
+      const childNode = await renderNode(child);
+      frame.appendChild(childNode);
+    }
+  }
+
+  return frame;
+}
+
+// Function to render a footer
+async function renderFooter(data: Node): Promise<FrameNode> {
+  const frame = figma.createFrame();
+  frame.layoutMode = 'HORIZONTAL';
+  frame.primaryAxisAlignItems = 'CENTER';
+  frame.counterAxisAlignItems = 'CENTER';
+  frame.paddingLeft = 32;
+  frame.paddingRight = 32;
+  frame.paddingTop = 16;
+  frame.paddingBottom = 16;
+  frame.itemSpacing = 64;
+  frame.resize(1440, 80);
+  let fill = { r: 0.97, g: 0.97, b: 0.97 };
+  if (data.properties && data.properties.footer && data.properties.footer.backgroundColor) {
+    fill = data.properties.footer.backgroundColor;
+  }
+  frame.fills = [{ type: 'SOLID', color: fill }];
+
+  // Render children (e.g., list of links, copyright)
+  if (data.children && Array.isArray(data.children)) {
+    for (const child of data.children) {
+      const childNode = await renderNode(child);
+      frame.appendChild(childNode);
+    }
+  }
+
+  return frame;
 }
 
 // Function to report progress to UI

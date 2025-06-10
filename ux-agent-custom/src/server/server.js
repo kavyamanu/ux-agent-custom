@@ -68,20 +68,121 @@ fastify.post("/command", async (request, reply) => {
 1. Design Structure:
    - Create multiple screens when the design requires different views or states
    - Each screen MUST be exactly 1440px wide and at least 900px high
-   - Each screen should be a frame containing other elements
+   - Each screen should be a frame containing other given list of elements
    - Use proper nesting and hierarchy for components
    - Maintain consistent spacing and alignment
    - Add descriptive IDs and names for each screen
 
-2. Available Primitive Components:
+2. Available Components:
    - frame: Container for other elements
    - text: Text elements
-   - button: Button elements
+   - button: Any element that acts as a button (such as submit, save, next, continue, cancel, etc.)
+   - card: Use for grouping related content, as a container with background, border radius, and optional shadow
+   - input: For user input fields (text, email, password, etc.)
+   - tab: For tab navigation elements
+   - divider: For visual separation between sections or elements
+   - list: For ordered or unordered lists of items
+   - table: For tabular data (columns and rows)
+   - header: For page or section headers (often at the top)
+   - footer: For page or section footers (often at the bottom)
    - rectangle: Rectangular shapes
    - line: Line elements
    - image: Image elements
 
-3. Layout Guidelines:
+3. Component Type Selection:
+   - Use 'card' for any container that groups related content, such as panels, sections, or cards in a UI. Cards usually have a background, border radius, and sometimes a shadow.
+   - Use 'input' for any user input field (e.g., text box, email, password, number, etc.).
+   - Use 'tab' for tab navigation elements.
+   - Use 'divider' to visually separate sections or elements.
+   - Use 'list' for displaying a list of items (ordered or unordered).
+   - Use 'table' for displaying tabular data.
+   - Use 'header' for the top section of a page or card.
+   - Use 'footer' for the bottom section of a page or card.
+   - For any interactive element that acts as a button (such as submit, save, next, continue, cancel, etc.), use type: "button".
+   - For non-interactive shapes, backgrounds, or decorative rectangles, use type: "rectangle".
+   - A button should be a visually distinct, clickable element, usually with a text label.
+
+For card components:
+   - type: "card"
+   - properties:
+     - fill: background color (object with r, g, b)
+     - cornerRadius: number (optional)
+     - shadow: boolean (optional, true to add a drop shadow)
+   - children: Array of child components (content inside the card)
+
+Example JSON for a card:
+{
+  "id": "profile-card",
+  "type": "card",
+  "layout": { "width": 400, "height": 200 },
+  "properties": {
+    "fill": { "r": 1, "g": 1, "b": 1 },
+    "cornerRadius": 12,
+    "shadow": true
+  },
+  "children": [
+    { "id": "card-title", "type": "text", "text": "Profile", "properties": { "fontSize": 20 } }
+  ]
+}
+
+Example JSON for an input:
+{
+  "id": "customer-name-input",
+  "type": "input",
+  "properties": {
+    "input": {
+      "label": "Customer Name",
+      "placeholder": "Enter customer name",
+      "type": "text"
+    }
+  }
+}
+
+Example JSON for a table:
+{
+  "id": "pricing-table",
+  "type": "table",
+  "properties": {
+    "table": {
+      "columns": ["Plan", "Price"],
+      "rows": [["Basic", "$10"], ["Pro", "$20"]]
+    }
+  }
+}
+
+Footer Component Schema:
+- Use type: "footer" for the page or section footer.
+- The footer must have:
+  - layout: { width: 1440, height: 80 }
+  - children: an array of nodes, typically including a list of links (type: "list") and/or a copyright text (type: "text").
+- The list of links should be provided as a string array in properties.list.
+
+Example JSON for a footer:
+{
+  "id": "footer",
+  "type": "footer",
+  "layout": { "width": 1440, "height": 80 },
+  "children": [
+    {
+      "id": "footer-links",
+      "type": "list",
+      "properties": {
+        "list": [
+          "Contact Us",
+          "Privacy Policy",
+          "Terms of Service"
+        ]
+      }
+    },
+    {
+      "id": "footer-copyright",
+      "type": "text",
+      "text": "© 2024 My Company"
+    }
+  ]
+}
+
+4. Layout Guidelines:
    - Screen width MUST be exactly 1440px
    - Screen height MUST be at least 900px
    - Set appropriate direction (horizontal/vertical)
@@ -90,7 +191,36 @@ fastify.post("/command", async (request, reply) => {
    - Apply appropriate padding
    - Position screens with proper spacing (64px between screens)
 
-4. Component Properties:
+5. Response Format:
+   IMPORTANT: You must respond with ONLY a valid JSON object, no other text or explanation.
+   The JSON must have a top-level property "screens" which is an array of screen objects.
+   Example:
+   {
+     "screens": [
+       {
+         "id": "main-screen",
+         "type": "frame",
+         "layout": { "width": 1440, "height": 900 },
+         "children": [
+           {
+             "id": "profile-card",
+             "type": "card",
+             "layout": { "width": 400, "height": 200 },
+             "properties": {
+               "fill": { "r": 1, "g": 1, "b": 1 },
+               "cornerRadius": 12,
+               "shadow": true
+             },
+             "children": [
+               { "id": "card-title", "type": "text", "text": "Profile", "properties": { "fontSize": 20 } }
+             ]
+           }
+         ]
+       }
+     ]
+   }
+
+6. Component Properties:
    For all components:
    - id: Unique identifier
    - type: Component type (frame, text, button, rectangle, line, image)
@@ -143,67 +273,18 @@ fastify.post("/command", async (request, reply) => {
      scaleMode: "fill" | "fit" | "tile" | "stretch"
    }
 
-5. Response Format:
-   IMPORTANT: You must respond with ONLY a valid JSON object, no other text or explanation.
-   The JSON must follow this exact structure:
-   {
-     "screens": [
-       {
-         "id": "unique-id",
-         "name": "descriptive-name",
-         "type": "frame",
-         "layout": {
-           "width": 1440,
-           "height": 900,
-           "direction": "vertical",
-           "alignment": "start",
-           "spacing": 16,
-           "padding": 24,
-           "x": 0,
-           "y": 0
-         },
-         "children": [
-           {
-             "id": "header-text",
-             "type": "text",
-             "text": "Welcome",
-             "layout": {
-               "width": 400,
-               "height": 40
-             },
-             "properties": {
-               "fontSize": 32,
-               "textAlign": "center",
-               "color": { "r": 0, "g": 0, "b": 0 }
-             }
-           },
-           {
-             "id": "content-frame",
-             "type": "frame",
-             "layout": {
-               "width": 800,
-               "height": 600,
-               "direction": "vertical",
-               "alignment": "center",
-               "spacing": 16,
-               "padding": 24
-             },
-             "children": [
-               // Nested components
-             ]
-           }
-         ]
-       }
-     ]
-   }
-
 6. Design Principles:
    - Create clear visual hierarchy
    - Use consistent spacing
    - Ensure proper alignment
    - Maintain readability
    - Follow accessibility guidelines
-   - Position screens logically (e.g., left to right, top to bottom)`;
+   - Position screens logically (e.g., left to right, top to bottom)
+
+For list and table components:
+- All content must be provided in properties.list (for list) or properties.table (for table).
+- Do NOT use children for list or table content; children should be empty or omitted for these types.
+- For containers (frame, card, header, footer), use children for layout and grouping.`;
 
     const fullPrompt = `${schemaInstructions}\n\nUser Prompt: ${prompt}\n\nIMPORTANT: Respond with ONLY the JSON object, no other text or explanation.`;
 
