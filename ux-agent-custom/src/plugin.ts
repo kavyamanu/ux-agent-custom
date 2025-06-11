@@ -102,7 +102,7 @@ interface NodeProperties {
 
 interface Node {
   id: string;
-  type: 'frame' | 'text' | 'rectangle' | 'line' | 'image' | 'button' | 'card' | 'input' | 'tab' | 'divider' | 'list' | 'table' | 'header' | 'footer';
+  type: 'frame' | 'text' | 'rectangle' | 'line' | 'image' | 'button' | 'card' | 'input' | 'tab' | 'divider' | 'list' | 'table' | 'header' | 'footer' | 'container';
   name?: string;
   layout?: Layout;
   properties?: NodeProperties;
@@ -155,6 +155,10 @@ async function generateDesign(prompt: string) {
       throw new Error("Invalid design data received");
     }
 
+    // Clear existing content on the current page
+    const currentPage = figma.currentPage;
+    currentPage.children.forEach(child => child.remove());
+
     // Process each screen
     for (const screen of designData.screens) {
       if (shouldStop) {
@@ -162,9 +166,51 @@ async function generateDesign(prompt: string) {
       }
 
       reportProgress('rendering', `Rendering screen: ${screen.name || screen.id}`);
+      
+      // Ensure screen has proper layout
+      if (!screen.layout) {
+        screen.layout = {
+          width: 1440,
+          height: 900,
+          x: 0,
+          y: 0
+        };
+      }
+
+      // Ensure screen has proper dimensions
+      screen.layout.width = 1440;
+      screen.layout.height = Math.max(900, screen.layout.height || 900);
+
       const screenNode = await renderNode(screen);
-      figma.currentPage.appendChild(screenNode);
+      
+      // Position the screen
+      if (screen.layout.x !== undefined) {
+        screenNode.x = screen.layout.x;
+      }
+      if (screen.layout.y !== undefined) {
+        screenNode.y = screen.layout.y;
+      }
+
+      currentPage.appendChild(screenNode);
     }
+
+    // Zoom to fit all screens
+    const bounds = currentPage.children.reduce((acc, node) => {
+      return {
+        x: Math.min(acc.x, node.x),
+        y: Math.min(acc.y, node.y),
+        width: Math.max(acc.width, node.x + node.width),
+        height: Math.max(acc.height, node.y + node.height)
+      };
+    }, { x: Infinity, y: Infinity, width: -Infinity, height: -Infinity });
+
+    // Create a rectangle node to represent the bounds
+    const boundsRect = figma.createRectangle();
+    boundsRect.x = bounds.x;
+    boundsRect.y = bounds.y;
+    boundsRect.resize(bounds.width, bounds.height);
+    figma.viewport.scrollAndZoomIntoView([boundsRect]);
+    boundsRect.remove();
 
     figma.notify("Design generated successfully!");
     figma.ui.postMessage({ type: "complete", success: true });
@@ -224,6 +270,12 @@ function isDesign(data: unknown): data is Design {
 async function renderNode(data: Node): Promise<SceneNode> {
   if (!data || typeof data !== 'object') {
     throw new Error('Invalid node data');
+  }
+
+  // Convert container type to frame
+  if (data.type === 'container') {
+    console.log(`Converting container type to frame for node: ${data.id}`);
+    data.type = 'frame';
   }
 
   console.log(`[renderNode] Rendering node:`, {
@@ -734,46 +786,78 @@ async function renderTable(data: Node): Promise<FrameNode> {
   frame.paddingTop = 0;
   frame.paddingBottom = 0;
   frame.resize(400, 200);
+
   // Only render from properties.table, never from children
   if (data.properties && data.properties.table) {
-    const { columns, rows } = data.properties.table;
+    const { columns = [], rows = [] } = data.properties.table;
+
+    // Validate columns and rows
+    if (!Array.isArray(columns) || !Array.isArray(rows)) {
+      console.error('Invalid table data:', data.properties.table);
+      return frame;
+    }
+
     // Header row
     const headerRow = figma.createFrame();
     headerRow.layoutMode = 'HORIZONTAL';
     headerRow.primaryAxisAlignItems = 'MIN';
     headerRow.counterAxisAlignItems = 'MIN';
     headerRow.itemSpacing = 0;
+    headerRow.paddingLeft = 12;
+    headerRow.paddingRight = 12;
+    headerRow.fills = [{ type: 'SOLID', color: { r: 0.97, g: 0.97, b: 0.97 } }];
+
+    // Calculate column width based on number of columns
+    const columnWidth = Math.floor(400 / Math.max(1, columns.length));
+
     for (const col of columns) {
       const cell = figma.createText();
       await figma.loadFontAsync({ family: "Inter", style: "Bold" });
       cell.fontName = { family: "Inter", style: "Bold" };
-      cell.characters = col;
+      cell.characters = String(col);
       cell.fontSize = 14;
       cell.fills = [{ type: 'SOLID', color: { r: 0.1, g: 0.1, b: 0.1 } }];
-      cell.resize(100, 24);
+      cell.resize(columnWidth, 40);
       headerRow.appendChild(cell);
     }
     frame.appendChild(headerRow);
+
     // Data rows
-    for (const row of rows) {
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      if (!Array.isArray(row)) continue;
+
       const rowFrame = figma.createFrame();
       rowFrame.layoutMode = 'HORIZONTAL';
       rowFrame.primaryAxisAlignItems = 'MIN';
       rowFrame.counterAxisAlignItems = 'MIN';
       rowFrame.itemSpacing = 0;
+      rowFrame.paddingLeft = 12;
+      rowFrame.paddingRight = 12;
+      
+      // Alternate row colors
+      if (i % 2 === 1) {
+        rowFrame.fills = [{ type: 'SOLID', color: { r: 0.98, g: 0.98, b: 0.98 } }];
+      }
+
       for (const cellText of row) {
         const cell = figma.createText();
         await figma.loadFontAsync({ family: "Inter", style: "Regular" });
         cell.fontName = { family: "Inter", style: "Regular" };
-        cell.characters = cellText;
+        cell.characters = String(cellText);
         cell.fontSize = 14;
         cell.fills = [{ type: 'SOLID', color: { r: 0.2, g: 0.2, b: 0.2 } }];
-        cell.resize(100, 24);
+        cell.resize(columnWidth, 40);
         rowFrame.appendChild(cell);
       }
       frame.appendChild(rowFrame);
     }
+
+    // Add borders
+    frame.strokes = [{ type: 'SOLID', color: { r: 0.8, g: 0.8, b: 0.8 } }];
+    frame.strokeWeight = 1;
   }
+
   return frame;
 }
 
