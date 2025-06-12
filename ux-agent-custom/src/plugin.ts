@@ -401,6 +401,13 @@ async function applyLayout(node: SceneNode, layout: Layout) {
 // Function to render a frame
 async function renderFrame(data: Node): Promise<FrameNode> {
   const frame = figma.createFrame();
+  // Only set width/height if provided
+  if (data.layout && data.layout.width) {
+    frame.resizeWithoutConstraints(data.layout.width, frame.height);
+  }
+  if (data.layout && data.layout.height) {
+    frame.resizeWithoutConstraints(frame.width, data.layout.height);
+  }
   return frame;
 }
 
@@ -499,23 +506,19 @@ async function renderImage(data: Node): Promise<RectangleNode> {
   // Apply image properties
   if (data.properties && data.properties.image) {
     const props = data.properties.image;
-    if (props.url) {
+    if (props.url && props.url.trim() !== '') {
       try {
         const response = await fetch(props.url);
         const arrayBuffer = await response.arrayBuffer();
         const uint8Array = new Uint8Array(arrayBuffer);
-        
         const imageHash = await figma.createImage(uint8Array);
-        
         const scaleModeMap: Record<string, 'FILL' | 'FIT' | 'CROP' | 'TILE'> = {
           'fill': 'FILL',
           'fit': 'FIT',
           'tile': 'TILE',
           'stretch': 'FILL'
         };
-        
         const scaleMode = scaleModeMap[props.scaleMode || 'fill'] || 'FILL';
-        
         image.fills = [{
           type: 'IMAGE',
           scaleMode,
@@ -589,12 +592,13 @@ async function renderButton(data: Node): Promise<FrameNode> {
 async function renderCard(data: Node): Promise<FrameNode> {
   const card = figma.createFrame();
   card.name = data.name || data.id || 'Card';
-
-  // Set size
-  const width = (data.layout && data.layout.width) || 300;
-  const height = (data.layout && data.layout.height) || 200;
-  card.resize(width, height);
-
+  // Only set width/height if provided
+  if (data.layout && data.layout.width) {
+    card.resizeWithoutConstraints(data.layout.width, card.height);
+  }
+  if (data.layout && data.layout.height) {
+    card.resizeWithoutConstraints(card.width, data.layout.height);
+  }
   // Set background color, border radius, and shadow
   let fill = { r: 1, g: 1, b: 1 };
   let cornerRadius = 12;
@@ -609,7 +613,6 @@ async function renderCard(data: Node): Promise<FrameNode> {
   if (shadow) {
     card.effects = [{ type: 'DROP_SHADOW', color: { r: 0, g: 0, b: 0, a: 0.15 }, offset: { x: 0, y: 4 }, radius: 12, spread: 0, visible: true, blendMode: 'NORMAL' }];
   }
-
   // Layout children vertically by default
   card.layoutMode = 'VERTICAL';
   card.primaryAxisAlignItems = 'MIN';
@@ -619,7 +622,6 @@ async function renderCard(data: Node): Promise<FrameNode> {
   card.paddingTop = 24;
   card.paddingBottom = 24;
   card.itemSpacing = 16;
-
   // Render children
   if (data.children && Array.isArray(data.children)) {
     for (const child of data.children) {
@@ -627,7 +629,6 @@ async function renderCard(data: Node): Promise<FrameNode> {
       card.appendChild(childNode);
     }
   }
-
   return card;
 }
 

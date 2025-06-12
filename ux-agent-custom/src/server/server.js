@@ -67,7 +67,7 @@ fastify.post("/command", async (request, reply) => {
 
 1. Design Structure and Quality Guidelines:
    - ALWAYS create multiple screens for a complete user flow
-   - Each screen MUST be exactly 1440px wide and at least 900px high
+   - Each screen MUST be exactly 1440px wide and minimum 900px high, height can be more than 900px based on the content.
    - Screens should be positioned horizontally with 64px spacing between them
    - Each screen should represent a distinct view or state in the user flow
    - Common screen types include:
@@ -409,7 +409,7 @@ fastify.post("/command", async (request, reply) => {
       - Header height: 64-80px
       - Footer height: 80-120px
       - Proper padding: 24-32px
-      - Background color: { r: 0.97, g: 0.97, b: 0.97 }
+      - Background color: { r: 0.3, g: 0.5, b: 0.9 } for header and { r: 0.95, g: 0.95, b: 0.95 } for footer
       - Consistent navigation spacing: 24-32px
 
    f) Lists and Tables:
@@ -480,7 +480,7 @@ fastify.post("/command", async (request, reply) => {
              "layout": { "width": 1440, "height": 64 },
              "properties": {
                "header": {
-                 "backgroundColor": { "r": 0.97, "g": 0.97, "b": 0.97 }
+                 "backgroundColor": { "r": 0.3, "g": 0.5, "b": 0.5 }
                }
              },
              "children": [
