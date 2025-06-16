@@ -368,12 +368,119 @@ async function renderNode(data: Node): Promise<SceneNode> {
   console.log(`[renderNode] Rendering node:`, {
     id: data.id,
     type: data.type,
-    hasChildren: data.children && data.children.length > 0
+    hasChildren: data.children && data.children.length > 0,
+    componentKey: data.componentKey
   });
 
   let node: SceneNode;
 
-  // Find matching component key if available
+  // First check if componentKey is directly provided in the data
+  if (data.componentKey) {
+    console.log(`Using provided componentKey: ${data.componentKey}`);
+    try {
+      // Load required fonts before importing component
+      await loadRequiredFonts();
+      
+      // Try to instantiate the component from the library
+      const component = await figma.importComponentByKeyAsync(data.componentKey);
+      if (component) {
+        console.log(`Successfully imported component with key: ${data.componentKey}`);
+        node = component.createInstance();
+        
+        // Set the name if provided
+        if (data.name) {
+          node.name = data.name;
+        }
+
+        // Apply layout if provided
+        if (data.layout) {
+          await applyLayout(node, data.layout);
+        }
+
+        // Apply AI-generated content to the component
+        if (node.type === 'INSTANCE') {
+          console.log('Processing component instance:', {
+            name: node.name,
+            type: node.type,
+            hasText: data.text,
+            hasProperties: !!data.properties
+          });
+
+          // If we have AI-generated text, apply it to the component
+          if (data.text) {
+            console.log('Applying AI-generated text:', data.text);
+            await updateComponentText(node, data.text);
+          }
+
+          // If we have properties, try to apply them
+          if (data.properties) {
+            // Apply text properties if available
+            if (data.properties.text) {
+              const textNodes = node.findAll(node => node.type === 'TEXT') as TextNode[];
+              for (const textNode of textNodes) {
+                try {
+                  // Load the font
+                  if (typeof textNode.fontName === 'symbol') {
+                    await figma.loadFontAsync({ family: "Inter", style: "Regular" });
+                    textNode.fontName = { family: "Inter", style: "Regular" };
+                  } else {
+                    await figma.loadFontAsync(textNode.fontName);
+                  }
+
+                  // Apply text properties
+                  if (data.properties.text.text) {
+                    textNode.characters = data.properties.text.text;
+                  }
+                  if (data.properties.text.fontSize) {
+                    textNode.fontSize = data.properties.text.fontSize;
+                  }
+                  if (data.properties.text.color) {
+                    textNode.fills = [{ type: 'SOLID', color: data.properties.text.color }];
+                  }
+                } catch (error) {
+                  console.error('Error applying text properties:', error);
+                }
+              }
+            }
+
+            // Apply rectangle properties if available
+            if (data.properties.rectangle) {
+              const rectNodes = node.findAll(node => node.type === 'RECTANGLE') as RectangleNode[];
+              for (const rectNode of rectNodes) {
+                if (data.properties.rectangle.fill) {
+                  rectNode.fills = [{ type: 'SOLID', color: data.properties.rectangle.fill }];
+                }
+                if (data.properties.rectangle.cornerRadius !== undefined) {
+                  rectNode.cornerRadius = data.properties.rectangle.cornerRadius;
+                }
+              }
+            }
+          }
+
+          // If we have children, try to apply their content
+          if (data.children && data.children.length > 0) {
+            const childNodes = node.findAll(node => node.type === 'INSTANCE' || node.type === 'FRAME') as (InstanceNode | FrameNode)[];
+            for (let i = 0; i < Math.min(data.children.length, childNodes.length); i++) {
+              const childData = data.children[i];
+              const childNode = childNodes[i];
+              
+              // Apply text content to child nodes
+              if (childData.text) {
+                await updateComponentText(childNode, childData.text);
+              }
+            }
+          }
+        }
+
+        return node;
+      }
+    } catch (error) {
+      console.error(`Failed to import component with key ${data.componentKey}:`, error);
+      // Fall back to regular rendering if component import fails
+    }
+  }
+
+  // If no componentKey provided or import failed, try to find matching component
   const componentKey = findMatchingComponentKey(data.type, availableComponents);
   if (componentKey) {
     console.log(`Found matching component key for ${data.type}: ${componentKey}`);
@@ -531,6 +638,14 @@ async function renderNode(data: Node): Promise<SceneNode> {
     case 'navigation':
       await loadRequiredFonts();
       node = await renderNavigation(data);
+      break;
+    case 'footer':
+      await loadRequiredFonts();
+      node = await renderFooter(data);
+      break;
+    case 'file-selector':
+      await loadRequiredFonts();
+      node = await renderFileSelector(data);
       break;
     default:
       throw new Error(`Unsupported node type: ${data.type}`);
@@ -1027,26 +1142,19 @@ async function renderList(data: Node): Promise<FrameNode> {
     await applyLayout(frame, data.layout);
   }
 
-  // Only render from properties.list, never from children
-  if (data.properties && data.properties.list && Array.isArray(data.properties.list)) {
+  // Render list items
+  if (data.properties && data.properties.list && data.properties.list.items && Array.isArray(data.properties.list.items)) {
     let idx = 1;
-    for (const item of data.properties.list) {
-      let itemNode: SceneNode;
-      if (typeof item === 'string') {
-        // If item is a string, create a text node
-        const textNode: Node = {
-          id: data.id + '-item-' + idx,
-          type: 'text',
-          text: item,
-          properties: { text: { fontSize: 14, color: { r: 0.2, g: 0.2, b: 0.2 } } },
-          layout: { width: width - 32, height: 20 } // Account for padding
-        };
-        itemNode = await renderText(textNode);
-      } else {
-        // Otherwise, treat as a Node object
-        itemNode = await renderNode(item);
-      }
-      // Optionally add bullet or number
+    for (const item of data.properties.list.items) {
+      // Create a row frame for each item
+      const rowFrame = figma.createFrame();
+      rowFrame.layoutMode = 'HORIZONTAL';
+      rowFrame.primaryAxisAlignItems = 'MIN';
+      rowFrame.counterAxisAlignItems = 'CENTER';
+      rowFrame.itemSpacing = 8;
+      rowFrame.resize(width - 32, 24); // Account for padding
+
+      // Add bullet or number if ordered
       if (data.properties.list.ordered) {
         const bullet = figma.createText();
         await figma.loadFontAsync({ family: "Inter", style: "Regular" });
@@ -1054,11 +1162,58 @@ async function renderList(data: Node): Promise<FrameNode> {
         bullet.characters = idx + '.';
         bullet.fontSize = 14;
         bullet.fills = [{ type: 'SOLID', color: { r: 0.2, g: 0.2, b: 0.2 } }];
-        frame.appendChild(bullet);
-        idx++;
+        rowFrame.appendChild(bullet);
+      } else {
+        // Add bullet point for unordered lists
+        const bullet = figma.createText();
+        await figma.loadFontAsync({ family: "Inter", style: "Regular" });
+        bullet.fontName = { family: "Inter", style: "Regular" };
+        bullet.characters = '•';
+        bullet.fontSize = 14;
+        bullet.fills = [{ type: 'SOLID', color: { r: 0.2, g: 0.2, b: 0.2 } }];
+        rowFrame.appendChild(bullet);
       }
-      frame.appendChild(itemNode);
+
+      // Create text node for the item
+      let itemNode: SceneNode;
+      if (typeof item === 'string') {
+        const textNode: Node = {
+          id: data.id + '-item-' + idx,
+          type: 'text',
+          text: item,
+          properties: { 
+            text: { 
+              fontSize: 14, 
+              color: { r: 0.2, g: 0.2, b: 0.2 },
+              textAlign: 'left'
+            } 
+          },
+          layout: { 
+            width: width - 48, // Account for bullet and spacing
+            height: 20 
+          }
+        };
+        itemNode = await renderText(textNode);
+      } else {
+        // If item is a Node object, render it
+        itemNode = await renderNode(item);
+      }
+
+      rowFrame.appendChild(itemNode);
+      frame.appendChild(rowFrame);
       idx++;
+    }
+
+    // Auto-size the frame based on content
+    if (frame.children.length > 0) {
+      let totalHeight = frame.paddingTop + frame.paddingBottom;
+      for (const child of frame.children) {
+        totalHeight += child.height;
+        if (child !== frame.children[frame.children.length - 1]) {
+          totalHeight += frame.itemSpacing;
+        }
+      }
+      frame.resize(frame.width, totalHeight);
     }
   }
 
