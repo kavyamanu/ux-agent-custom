@@ -1385,6 +1385,112 @@ async function renderNavigation(data: Node): Promise<FrameNode> {
   return frame;
 }
 
+// Function to render a footer
+async function renderFooter(data: Node): Promise<FrameNode> {
+  const frame = figma.createFrame();
+  frame.name = data.name || data.id || 'Footer';
+  
+  // Set initial size
+  const width = (data.layout && data.layout.width) || 1440;
+  const height = (data.layout && data.layout.height) || 80;
+  frame.resize(width, height);
+
+  // Set default layout
+  frame.layoutMode = 'HORIZONTAL';
+  frame.primaryAxisAlignItems = 'CENTER';
+  frame.counterAxisAlignItems = 'CENTER';
+  frame.paddingLeft = 32;
+  frame.paddingRight = 32;
+  frame.paddingTop = 16;
+  frame.paddingBottom = 16;
+  frame.itemSpacing = 32;
+
+  // Set background color
+  let fill = { r: 0.97, g: 0.97, b: 0.97 };
+  if (data.properties && data.properties.footer && data.properties.footer.backgroundColor) {
+    fill = data.properties.footer.backgroundColor;
+  }
+  frame.fills = [{ type: 'SOLID', color: fill }];
+
+  // Add footer text if provided
+  if (data.properties && data.properties.footer && data.properties.footer.text) {
+    const textNode: Node = {
+      id: data.id + '-text',
+      type: 'text',
+      text: data.properties.footer.text,
+      properties: { 
+        text: { 
+          fontSize: 14, 
+          color: { r: 0.2, g: 0.2, b: 0.2 },
+          textAlign: 'center'
+        } 
+      }
+    };
+    const text = await renderText(textNode);
+    frame.appendChild(text);
+  }
+
+  // Render children if any
+  if (data.children && Array.isArray(data.children)) {
+    for (const child of data.children) {
+      const childNode = await renderNode(child);
+      frame.appendChild(childNode);
+    }
+  }
+
+  return frame;
+}
+
+// Function to render a file selector
+async function renderFileSelector(data: Node): Promise<FrameNode> {
+  const frame = figma.createFrame();
+  frame.name = data.name || data.id || 'File Selector';
+  
+  // Set initial size
+  const width = (data.layout && data.layout.width) || 240;
+  const height = (data.layout && data.layout.height) || 48;
+  frame.resize(width, height);
+
+  // Set default layout
+  frame.layoutMode = 'HORIZONTAL';
+  frame.primaryAxisAlignItems = 'CENTER';
+  frame.counterAxisAlignItems = 'CENTER';
+  frame.paddingLeft = 16;
+  frame.paddingRight = 16;
+  frame.paddingTop = 8;
+  frame.paddingBottom = 8;
+  frame.itemSpacing = 8;
+
+  // Create the button frame
+  const buttonFrame = figma.createFrame();
+  buttonFrame.name = 'Select File Button';
+  buttonFrame.resize(width - 32, 32);
+  buttonFrame.cornerRadius = 6;
+  buttonFrame.fills = [{ type: 'SOLID', color: { r: 0.1, g: 0.5, b: 0.9 } }];
+  buttonFrame.layoutMode = 'HORIZONTAL';
+  buttonFrame.primaryAxisAlignItems = 'CENTER';
+  buttonFrame.counterAxisAlignItems = 'CENTER';
+
+  // Add button text
+  const textNode: Node = {
+    id: data.id + '-button-text',
+    type: 'text',
+    text: 'Select File',
+    properties: { 
+      text: { 
+        fontSize: 14, 
+        color: { r: 1, g: 1, b: 1 },
+        textAlign: 'center'
+      } 
+    }
+  };
+  const text = await renderText(textNode);
+  buttonFrame.appendChild(text);
+
+  frame.appendChild(buttonFrame);
+  return frame;
+}
+
 // Function to report progress to UI
 function reportProgress(stage: string, message: string) {
   figma.ui.postMessage({
