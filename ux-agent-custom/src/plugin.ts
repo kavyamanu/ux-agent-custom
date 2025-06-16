@@ -102,17 +102,33 @@ interface NodeProperties {
 
 interface Node {
   id: string;
-  type: 'frame' | 'text' | 'rectangle' | 'line' | 'image' | 'button' | 'card' | 'input' | 'tab' | 'divider' | 'list' | 'table' | 'header' | 'footer' | 'container';
+  type: 'frame' | 'text' | 'rectangle' | 'line' | 'image' | 'button' | 'card' | 'input' | 'tab' | 'divider' | 'list' | 'table' | 'header' | 'navigation' | 'container'| 'footer' | 'file-selector';
   name?: string;
   layout?: Layout;
   properties?: NodeProperties;
   children?: Node[];
   text?: string;
+  componentKey?: string;
 }
 
 interface Design {
   screens: Node[];
 }
+
+// Add these interfaces near the top with other interfaces
+interface ComponentInfo {
+  key: string;
+  pageName: string;
+  name: string;
+}
+
+interface ComponentsResponse {
+  success: boolean;
+  components: ComponentInfo[];
+}
+
+// Add this after the interfaces
+let availableComponents: ComponentInfo[] = [];
 
 // Handle messages from the UI
 figma.ui.onmessage = async (msg) => {
@@ -225,6 +241,21 @@ async function generateDesign(prompt: string) {
 // Function to get design data from server
 async function getDesignData(prompt: string): Promise<Design> {
   try {
+    
+    // First, fetch available components
+    const componentsResponse = await fetch("http://localhost:3000/components");
+    
+    if (!componentsResponse.ok) {
+      throw new Error(`Failed to fetch components: ${componentsResponse.status}`);
+    }
+    
+    const componentsData = await componentsResponse.json() as ComponentsResponse;
+    
+    // Store components in the module-level variable
+    availableComponents = componentsData.components || [];
+    console.log("Available components:", availableComponents);
+
+    // Then send the design request with available components
     const response = await fetch("http://localhost:3000/command", {
       method: "POST",
       headers: {
@@ -233,8 +264,8 @@ async function getDesignData(prompt: string): Promise<Design> {
       },
       body: JSON.stringify({
         prompt,
-        systemPrompt: "You are a UI/UX design expert creating high-quality, professional designs using primitive components.",
-        availableComponents: [] // Empty array since we're using primitive components
+        systemPrompt: "You are a UI/UX design expert creating high-quality, professional designs using primitive components. When creating a header, always follow it with a global navigation component. The global navigation should be placed immediately after the header in the component hierarchy. Every design must include a footer component at the bottom of the page. The footer should be the last component in the page hierarchy.",
+        availableComponents
       }),
     });
 
@@ -250,7 +281,7 @@ async function getDesignData(prompt: string): Promise<Design> {
     }
     return data;
   } catch (error: unknown) {
-    console.error("Error fetching design data:", error);
+    console.error("Error in getDesignData:", error);
     const errorMessage = error instanceof Error ? error.message : 'Failed to get design data from server';
     throw new Error(errorMessage);
   }
@@ -266,7 +297,63 @@ function isDesign(data: unknown): data is Design {
   );
 }
 
-// Function to render a node and its children
+// Add this function after the interfaces
+function findMatchingComponentKey(type: string, availableComponents: ComponentInfo[]): string | undefined {
+  // Skip matching for text type
+  if (type === 'text') {
+    return undefined;
+  }
+
+  // Special case for header component
+  if (type === 'header') {
+    return '3a068adf26ed6116101337530679fd2ae6b73c13';
+  }
+
+  // Convert type to lowercase and remove special characters for case-insensitive matching
+  const typeLower = type.toLowerCase().replace(/[^a-z0-9]/g, '');
+  
+  // First try to find an exact match by ID
+  const exactMatch = availableComponents.find(comp => {
+    if (!comp || !comp.name) return false;
+    const compId = comp.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+    // Check if the component ID matches the type
+    return compId === typeLower;
+  });
+
+  if (exactMatch && exactMatch.key) {
+    console.log(`Found exact match for ${type} with ID ${exactMatch.name}: ${exactMatch.key}`);
+    return exactMatch.key;
+  }
+
+  // If no exact match found, look for partial match by ID
+  const partialMatch = availableComponents.find(comp => {
+    if (!comp || !comp.name) return false;
+    const compId = comp.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+    return compId.includes(typeLower);
+  });
+  
+  if (partialMatch && partialMatch.key) {
+    console.log(`Found partial match for ${type} with ID ${partialMatch.name}: ${partialMatch.key}`);
+    return partialMatch.key;
+  }
+
+  return undefined;
+}
+
+// Add this function after the interfaces
+async function loadRequiredFonts() {
+  try {
+    await figma.loadFontAsync({ family: "SF Pro", style: "Regular" });
+    await figma.loadFontAsync({ family: "SF Pro", style: "Bold" });
+    await figma.loadFontAsync({ family: "Inter", style: "Regular" });
+    await figma.loadFontAsync({ family: "Inter", style: "Bold" });
+    console.log("Required fonts loaded successfully");
+  } catch (error) {
+    console.error("Error loading fonts:", error);
+  }
+}
+
+// Update the renderNode function to add componentKey
 async function renderNode(data: Node): Promise<SceneNode> {
   if (!data || typeof data !== 'object') {
     throw new Error('Invalid node data');
@@ -286,12 +373,120 @@ async function renderNode(data: Node): Promise<SceneNode> {
 
   let node: SceneNode;
 
-  // Create the appropriate node type
+  // Find matching component key if available
+  const componentKey = findMatchingComponentKey(data.type, availableComponents);
+  if (componentKey) {
+    console.log(`Found matching component key for ${data.type}: ${componentKey}`);
+    try {
+      // Load required fonts before importing component
+      await loadRequiredFonts();
+      
+      // Try to instantiate the component from the library
+      const component = await figma.importComponentByKeyAsync(componentKey);
+      if (component) {
+        console.log(`Successfully imported component: ${componentKey}`);
+        node = component.createInstance();
+        
+        // Set the name if provided
+        if (data.name) {
+          node.name = data.name;
+        }
+
+        // Apply layout if provided
+        if (data.layout) {
+          await applyLayout(node, data.layout);
+        }
+
+        // Apply AI-generated content to the component
+        if (node.type === 'INSTANCE') {
+          console.log('Processing component instance:', {
+            name: node.name,
+            type: node.type,
+            hasText: data.text,
+            hasProperties: !!data.properties
+          });
+
+          // If we have AI-generated text, apply it to the component
+          if (data.text) {
+            console.log('Applying AI-generated text:', data.text);
+            await updateComponentText(node, data.text);
+          }
+
+          // If we have properties, try to apply them
+          if (data.properties) {
+            // Apply text properties if available
+            if (data.properties.text) {
+              const textNodes = node.findAll(node => node.type === 'TEXT') as TextNode[];
+              for (const textNode of textNodes) {
+                try {
+                  // Load the font
+                  if (typeof textNode.fontName === 'symbol') {
+                    await figma.loadFontAsync({ family: "Inter", style: "Regular" });
+                    textNode.fontName = { family: "Inter", style: "Regular" };
+                  } else {
+                    await figma.loadFontAsync(textNode.fontName);
+                  }
+
+                  // Apply text properties
+                  if (data.properties.text.text) {
+                    textNode.characters = data.properties.text.text;
+                  }
+                  if (data.properties.text.fontSize) {
+                    textNode.fontSize = data.properties.text.fontSize;
+                  }
+                  if (data.properties.text.color) {
+                    textNode.fills = [{ type: 'SOLID', color: data.properties.text.color }];
+                  }
+                } catch (error) {
+                  console.error('Error applying text properties:', error);
+                }
+              }
+            }
+
+            // Apply rectangle properties if available
+            if (data.properties.rectangle) {
+              const rectNodes = node.findAll(node => node.type === 'RECTANGLE') as RectangleNode[];
+              for (const rectNode of rectNodes) {
+                if (data.properties.rectangle.fill) {
+                  rectNode.fills = [{ type: 'SOLID', color: data.properties.rectangle.fill }];
+                }
+                if (data.properties.rectangle.cornerRadius !== undefined) {
+                  rectNode.cornerRadius = data.properties.rectangle.cornerRadius;
+                }
+              }
+            }
+          }
+
+          // If we have children, try to apply their content
+          if (data.children && data.children.length > 0) {
+            const childNodes = node.findAll(node => node.type === 'INSTANCE' || node.type === 'FRAME') as (InstanceNode | FrameNode)[];
+            for (let i = 0; i < Math.min(data.children.length, childNodes.length); i++) {
+              const childData = data.children[i];
+              const childNode = childNodes[i];
+              
+              // Apply text content to child nodes
+              if (childData.text) {
+                await updateComponentText(childNode, childData.text);
+              }
+            }
+          }
+        }
+
+        return node;
+      }
+    } catch (error) {
+      console.error(`Failed to import component ${componentKey}:`, error);
+      // Fall back to regular rendering if component import fails
+    }
+  }
+
+  // Create the appropriate node type if no component key or import failed
   switch (data.type) {
     case 'frame':
       node = await renderFrame(data);
       break;
     case 'text':
+      await loadRequiredFonts();
       node = await renderText(data);
       break;
     case 'rectangle':
@@ -304,31 +499,38 @@ async function renderNode(data: Node): Promise<SceneNode> {
       node = await renderImage(data);
       break;
     case 'button':
+      await loadRequiredFonts();
       node = await renderButton(data);
       break;
     case 'card':
       node = await renderCard(data);
       break;
     case 'input':
+      await loadRequiredFonts();
       node = await renderInput(data);
       break;
     case 'tab':
+      await loadRequiredFonts();
       node = await renderTab(data);
       break;
     case 'divider':
       node = await renderDivider(data);
       break;
     case 'list':
+      await loadRequiredFonts();
       node = await renderList(data);
       break;
     case 'table':
+      await loadRequiredFonts();
       node = await renderTable(data);
       break;
     case 'header':
+      await loadRequiredFonts();
       node = await renderHeader(data);
       break;
-    case 'footer':
-      node = await renderFooter(data);
+    case 'navigation':
+      await loadRequiredFonts();
+      node = await renderNavigation(data);
       break;
     default:
       throw new Error(`Unsupported node type: ${data.type}`);
@@ -348,8 +550,12 @@ async function renderNode(data: Node): Promise<SceneNode> {
   if (data.type === 'frame' && data.children && node.type === 'FRAME') {
     const frameNode = node as FrameNode;
     for (const child of data.children) {
-      const childNode = await renderNode(child);
-      frameNode.appendChild(childNode);
+      try {
+        const childNode = await renderNode(child);
+        frameNode.appendChild(childNode);
+      } catch (error) {
+        console.error('Error rendering child node:', error);
+      }
     }
   }
 
@@ -372,11 +578,13 @@ async function applyLayout(node: SceneNode, layout: Layout) {
 
   if (node.type === 'FRAME') {
     const frame = node as FrameNode;
+    
+    // Set layout mode and alignment
     if (layout.direction) {
       frame.layoutMode = layout.direction.toUpperCase() as 'HORIZONTAL' | 'VERTICAL';
     }
+    
     if (layout.alignment) {
-      // Map alignment values to Figma's expected values
       const alignmentMap: Record<string, 'MIN' | 'CENTER' | 'MAX' | 'SPACE_BETWEEN'> = {
         'start': 'MIN',
         'center': 'CENTER',
@@ -386,14 +594,58 @@ async function applyLayout(node: SceneNode, layout: Layout) {
       const alignment = alignmentMap[layout.alignment.toLowerCase()] || 'MIN';
       frame.primaryAxisAlignItems = alignment;
     }
+
+    // Apply spacing and padding
     if (layout.spacing !== undefined) {
       frame.itemSpacing = layout.spacing;
     }
+    
     if (layout.padding !== undefined) {
       frame.paddingLeft = layout.padding;
       frame.paddingRight = layout.padding;
       frame.paddingTop = layout.padding;
       frame.paddingBottom = layout.padding;
+    }
+
+    // Auto-size frame based on children
+    if (frame.children.length > 0) {
+      // Calculate total height including padding and spacing
+      let totalHeight = frame.paddingTop + frame.paddingBottom;
+      let maxWidth = 0;
+
+      if (frame.layoutMode === 'VERTICAL') {
+        for (const child of frame.children) {
+          totalHeight += child.height;
+          if (child.width > maxWidth) {
+            maxWidth = child.width;
+          }
+          if (child !== frame.children[frame.children.length - 1]) {
+            totalHeight += frame.itemSpacing;
+          }
+        }
+        // Add padding to width
+        maxWidth += frame.paddingLeft + frame.paddingRight;
+      } else if (frame.layoutMode === 'HORIZONTAL') {
+        for (const child of frame.children) {
+          if (child.height > totalHeight) {
+            totalHeight = child.height;
+          }
+          maxWidth += child.width;
+          if (child !== frame.children[frame.children.length - 1]) {
+            maxWidth += frame.itemSpacing;
+          }
+        }
+        // Add padding to width
+        maxWidth += frame.paddingLeft + frame.paddingRight;
+      }
+
+      // Update frame size if larger than current size
+      if (totalHeight > frame.height) {
+        frame.resize(frame.width, totalHeight);
+      }
+      if (maxWidth > frame.width) {
+        frame.resize(maxWidth, frame.height);
+      }
     }
   }
 }
@@ -401,13 +653,30 @@ async function applyLayout(node: SceneNode, layout: Layout) {
 // Function to render a frame
 async function renderFrame(data: Node): Promise<FrameNode> {
   const frame = figma.createFrame();
-  // Only set width/height if provided
-  if (data.layout && data.layout.width) {
-    frame.resizeWithoutConstraints(data.layout.width, frame.height);
+  frame.name = data.name || data.id || 'Frame';
+  
+  // Set initial size
+  const width = (data.layout && data.layout.width) || 1440;
+  const height = (data.layout && data.layout.height) || 900;
+  frame.resize(width, height);
+
+  // Set default layout mode if not specified
+  if (!data.layout || !data.layout.direction) {
+    frame.layoutMode = 'VERTICAL';
+    frame.primaryAxisAlignItems = 'MIN';
+    frame.counterAxisAlignItems = 'MIN';
+    frame.paddingLeft = 24;
+    frame.paddingRight = 24;
+    frame.paddingTop = 24;
+    frame.paddingBottom = 24;
+    frame.itemSpacing = 16;
   }
-  if (data.layout && data.layout.height) {
-    frame.resizeWithoutConstraints(frame.width, data.layout.height);
+
+  // Apply layout properties
+  if (data.layout) {
+    await applyLayout(frame, data.layout);
   }
+
   return frame;
 }
 
@@ -592,13 +861,12 @@ async function renderButton(data: Node): Promise<FrameNode> {
 async function renderCard(data: Node): Promise<FrameNode> {
   const card = figma.createFrame();
   card.name = data.name || data.id || 'Card';
-  // Only set width/height if provided
-  if (data.layout && data.layout.width) {
-    card.resizeWithoutConstraints(data.layout.width, card.height);
-  }
-  if (data.layout && data.layout.height) {
-    card.resizeWithoutConstraints(card.width, data.layout.height);
-  }
+  
+  // Set initial size
+  const width = (data.layout && data.layout.width) || 300;
+  const height = (data.layout && data.layout.height) || 200;
+  card.resize(width, height);
+
   // Set background color, border radius, and shadow
   let fill = { r: 1, g: 1, b: 1 };
   let cornerRadius = 12;
@@ -613,7 +881,8 @@ async function renderCard(data: Node): Promise<FrameNode> {
   if (shadow) {
     card.effects = [{ type: 'DROP_SHADOW', color: { r: 0, g: 0, b: 0, a: 0.15 }, offset: { x: 0, y: 4 }, radius: 12, spread: 0, visible: true, blendMode: 'NORMAL' }];
   }
-  // Layout children vertically by default
+
+  // Set default layout
   card.layoutMode = 'VERTICAL';
   card.primaryAxisAlignItems = 'MIN';
   card.counterAxisAlignItems = 'MIN';
@@ -622,6 +891,12 @@ async function renderCard(data: Node): Promise<FrameNode> {
   card.paddingTop = 24;
   card.paddingBottom = 24;
   card.itemSpacing = 16;
+
+  // Apply layout properties
+  if (data.layout) {
+    await applyLayout(card, data.layout);
+  }
+
   // Render children
   if (data.children && Array.isArray(data.children)) {
     for (const child of data.children) {
@@ -629,6 +904,7 @@ async function renderCard(data: Node): Promise<FrameNode> {
       card.appendChild(childNode);
     }
   }
+
   return card;
 }
 
@@ -729,15 +1005,28 @@ async function renderDivider(data: Node): Promise<LineNode> {
 // Function to render a list
 async function renderList(data: Node): Promise<FrameNode> {
   const frame = figma.createFrame();
+  frame.name = data.name || data.id || 'List';
+  
+  // Set initial size
+  const width = (data.layout && data.layout.width) || 240;
+  const height = (data.layout && data.layout.height) || 100;
+  frame.resize(width, height);
+
+  // Set default layout
   frame.layoutMode = 'VERTICAL';
   frame.primaryAxisAlignItems = 'MIN';
   frame.counterAxisAlignItems = 'MIN';
   frame.itemSpacing = 8;
-  frame.paddingLeft = 0;
-  frame.paddingRight = 0;
-  frame.paddingTop = 0;
-  frame.paddingBottom = 0;
-  frame.resize(240, 100);
+  frame.paddingLeft = 16;
+  frame.paddingRight = 16;
+  frame.paddingTop = 16;
+  frame.paddingBottom = 16;
+
+  // Apply layout properties
+  if (data.layout) {
+    await applyLayout(frame, data.layout);
+  }
+
   // Only render from properties.list, never from children
   if (data.properties && data.properties.list && Array.isArray(data.properties.list)) {
     let idx = 1;
@@ -750,7 +1039,7 @@ async function renderList(data: Node): Promise<FrameNode> {
           type: 'text',
           text: item,
           properties: { text: { fontSize: 14, color: { r: 0.2, g: 0.2, b: 0.2 } } },
-          layout: { width: 120, height: 20 }
+          layout: { width: width - 32, height: 20 } // Account for padding
         };
         itemNode = await renderText(textNode);
       } else {
@@ -772,6 +1061,7 @@ async function renderList(data: Node): Promise<FrameNode> {
       idx++;
     }
   }
+
   return frame;
 }
 
@@ -891,25 +1181,45 @@ async function renderHeader(data: Node): Promise<FrameNode> {
   return frame;
 }
 
-// Function to render a footer
-async function renderFooter(data: Node): Promise<FrameNode> {
+// Function to render a navigation
+async function renderNavigation(data: Node): Promise<FrameNode> {
   const frame = figma.createFrame();
-  frame.layoutMode = 'HORIZONTAL';
-  frame.primaryAxisAlignItems = 'CENTER';
-  frame.counterAxisAlignItems = 'CENTER';
-  frame.paddingLeft = 32;
-  frame.paddingRight = 32;
-  frame.paddingTop = 16;
-  frame.paddingBottom = 16;
-  frame.itemSpacing = 64;
-  frame.resize(1440, 80);
-  let fill = { r: 0.97, g: 0.97, b: 0.97 };
-  if (data.properties && data.properties.footer && data.properties.footer.backgroundColor) {
-    fill = data.properties.footer.backgroundColor;
-  }
-  frame.fills = [{ type: 'SOLID', color: fill }];
+  frame.name = data.name || data.id || 'Navigation';
+  
+  // Set default layout if not provided
+  const layout = data.layout || {
+    width: 1440,
+    height: 48,
+    x: 0,
+    y: 64,
+    direction: 'horizontal',
+    alignment: 'center',
+    spacing: 32,
+    padding: 24
+  };
 
-  // Render children (e.g., list of links, copyright)
+  // Apply layout
+  frame.resize(layout.width || 1440, layout.height || 48);
+  frame.x = layout.x || 0;
+  frame.y = layout.y || 64;
+
+  // Set up frame properties
+  const direction = layout.direction ? layout.direction.toUpperCase() : 'HORIZONTAL';
+  const alignment = layout.alignment ? layout.alignment.toUpperCase() : 'CENTER';
+  
+  frame.layoutMode = direction as 'HORIZONTAL' | 'VERTICAL';
+  frame.primaryAxisAlignItems = alignment as 'MIN' | 'CENTER' | 'MAX';
+  frame.counterAxisAlignItems = 'CENTER';
+  frame.itemSpacing = layout.spacing || 32;
+  frame.paddingLeft = layout.padding || 24;
+  frame.paddingRight = layout.padding || 24;
+  frame.paddingTop = layout.padding || 24;
+  frame.paddingBottom = layout.padding || 24;
+
+  // Set background color
+  frame.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
+
+  // Render children
   if (data.children && Array.isArray(data.children)) {
     for (const child of data.children) {
       const childNode = await renderNode(child);
@@ -927,4 +1237,78 @@ function reportProgress(stage: string, message: string) {
     stage,
     message
   });
+}
+
+async function updateComponentText(node: InstanceNode | FrameNode, text: string) {
+  try {
+    // Find all text nodes in the component, including nested ones
+    const textNodes = node.findAll(node => {
+      // Check if the node is a text node
+      if (node.type === 'TEXT') return true;
+      
+      // If it's an instance or frame, check its children
+      if (node.type === 'INSTANCE' || node.type === 'FRAME') {
+        return node.findAll(child => child.type === 'TEXT').length > 0;
+      }
+      
+      return false;
+    }) as TextNode[];
+    
+    console.log(`Found ${textNodes.length} text nodes in component and its children`);
+
+    // If we have text nodes, update the first one
+    if (textNodes.length > 0) {
+      const textNode = textNodes[0];
+      const parentName = textNode.parent ? textNode.parent.name : 'unknown';
+      console.log('Current text node:', {
+        characters: textNode.characters,
+        fontName: textNode.fontName,
+        name: textNode.name,
+        parent: parentName
+      });
+
+      try {
+        // Load the font
+        await figma.loadFontAsync({ family: "Inter", style: "Regular" });
+        // Update the text
+        textNode.characters = text;
+        console.log('Updated text node with:', text);
+      } catch (error) {
+        console.error('Error updating text node:', error);
+      }
+    } else {
+      // If no text nodes found, try to find input placeholder text
+      const inputNodes = node.findAll(node => {
+        return node.type === 'INSTANCE' || node.type === 'FRAME';
+      }) as (InstanceNode | FrameNode)[];
+      
+      console.log(`Found ${inputNodes.length} potential input nodes`);
+      
+      for (const inputNode of inputNodes) {
+        const inputTextNodes = inputNode.findAll(node => node.type === 'TEXT') as TextNode[];
+        if (inputTextNodes.length > 0) {
+          const textNode = inputTextNodes[0];
+          const parentName = textNode.parent ? textNode.parent.name : 'unknown';
+          console.log('Found input text node:', {
+            characters: textNode.characters,
+            name: textNode.name,
+            parent: parentName
+          });
+          
+          try {
+            // Load the font
+            await figma.loadFontAsync({ family: "Inter", style: "Regular" });
+            // Update the text
+            textNode.characters = text;
+            console.log('Updated input text node with:', text);
+            break;
+          } catch (error) {
+            console.error('Error updating input text node:', error);
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error updating component text:', error);
+  }
 }

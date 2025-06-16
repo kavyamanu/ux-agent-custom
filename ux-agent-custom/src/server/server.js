@@ -51,6 +51,37 @@ await fastify.register(import("@fastify/cors"), {
   origin: true,
 });
 
+// Function to format component list with keys and page names
+function formatComponentList(components) {
+  return components.map(component => {
+    const pageName = component.containing_frame && component.containing_frame.pageName 
+      ? component.containing_frame.pageName 
+      : 'Unknown Page';
+    
+    return {
+      key: component.key,
+      name: component.name,
+      pageName: pageName
+    };
+  });
+}
+
+// Function to generate component matching instructions
+function generateComponentMatchingInstructions(components) {
+  return `
+Component Matching Instructions:
+1. For each component you create, check if there's a similar component in the available components list.
+2. Match components based on their names and types. For example:
+   - If creating a "header", look for components with "header" in their pagename
+   - If creating a "button", look for components with "button" in their pagename
+   - If creating a "card", look for components with "card" in their pagename
+3. When a match is found, add the componentKey property to your component using the matched component's key.
+4. Example matches:
+   ${components.map(comp => `- For a "${comp.pagename}" component, use componentKey: "${comp.key}"`).join('\n   ')}
+5. If no match is found, create the component without a componentKey.
+`;
+}
+
 fastify.post("/command", async (request, reply) => {
   try {
     console.log("Received request body:", request.body);
@@ -63,9 +94,39 @@ fastify.post("/command", async (request, reply) => {
       return;
     }
 
+    // Fetch available components from the library
+    const componentsResponse = await fetch(
+      `https://api.figma.com/v1/files/JZRmBokYBOJxnZMco4oGkx/components`,
+      {
+        headers: {
+          "X-Figma-Token": process.env.FIGMA_TOKEN || "",
+        },
+      }
+    );
+
+    if (!componentsResponse.ok) {
+      throw new Error(`Failed to fetch components: ${componentsResponse.status}`);
+    }
+
+    const componentsData = await componentsResponse.json();
+    const components = (componentsData.meta && componentsData.meta.components) || [];
+    const formattedComponents = formatComponentList(components);
+
+    // Log formatted components
+    console.log('Components for AI Prompt:', JSON.stringify(formattedComponents, null, 2));
+    console.log('Number of components found:', formattedComponents.length);
+
+    const componentMatchingInstructions = generateComponentMatchingInstructions(formattedComponents);
+
     const schemaInstructions = `You are a UI/UX design expert creating high-quality, professional designs using given list of components. Follow these guidelines:
 
-1. Design Structure and Quality Guidelines:
+1. Available Components:
+   The following components are available in the library. If you need to use any of these components, include their componentKey in the properties:
+   ${JSON.stringify(formattedComponents, null, 2)}
+
+${componentMatchingInstructions}
+
+2. Design Structure and Quality Guidelines:
    - ALWAYS create multiple screens for a complete user flow
    - Each screen MUST be exactly 1440px wide and minimum 900px high, height can be more than 900px based on the content.
    - Screens should be positioned horizontally with 64px spacing between them
@@ -81,14 +142,26 @@ fastify.post("/command", async (request, reply) => {
    - Use proper nesting and hierarchy for components
    - Maintain consistent spacing and alignment
    - Add descriptive IDs and names for each screen (e.g., "landing-page", "product-details", "checkout-flow")
+   - EVERY screen MUST include:
+     * A header component at the top
+     * A navigation component immediately after the header
+   - Navigation Requirements:
+     * Global navigation must be present on every screen
+     * Navigation should be placed immediately after the header
+     * Navigation should include links to all main sections
+     * Navigation should be consistent across all screens
+     * Navigation should be clearly visible and accessible
+     * Navigation should use appropriate spacing and styling
+     * Navigation should indicate the current page/section
 
-2. Component Schema Definitions:
-   IMPORTANT: Follow these exact schemas for each component type:
+3. Component Schema Definitions:
+   IMPORTANT: Follow these exact schemas for each component type. If using a component from the library, add the componentKey property:
 
    a) Frame Component:
       {
         "id": "unique-id",
         "type": "frame",
+        "componentKey": "string (optional, if using library component)",
         "layout": {
           "width": number,
           "height": number,
@@ -102,7 +175,38 @@ fastify.post("/command", async (request, reply) => {
         "children": [Node[]]
       }
 
-   b) Text Component:
+   b) Navigation Component:
+      {
+        "id": "unique-id",
+        "type": "navigation",
+        "name": "navigation",
+        "layout": {
+          "width": 1440,
+          "height": 48,
+          "x": 0,
+          "y": 64,
+          "direction": "horizontal",
+          "alignment": "center",
+          "spacing": 32,
+          "padding": 24
+        },
+        "children": [
+          {
+            "id": "nav-item-1",
+            "type": "text",
+            "text": "Home",
+            "properties": {
+              "text": {
+                "fontSize": 16,
+                "color": { "r": 0.1, "g": 0.1, "b": 0.1 },
+                "textAlign": "center"
+              }
+            }
+          }
+        ]
+      }
+
+   c) Text Component:
       {
         "id": "unique-id",
         "type": "text",
@@ -123,7 +227,7 @@ fastify.post("/command", async (request, reply) => {
         }
       }
 
-   c) Button Component:
+   d) Button Component:
       {
         "id": "unique-id",
         "type": "button",
@@ -142,7 +246,7 @@ fastify.post("/command", async (request, reply) => {
         }
       }
 
-   d) Card Component:
+   e) Card Component:
       {
         "id": "unique-id",
         "type": "card",
@@ -160,7 +264,7 @@ fastify.post("/command", async (request, reply) => {
         "children": [Node[]]
       }
 
-   e) Input Component:
+   f) Input Component:
       {
         "id": "unique-id",
         "type": "input",
@@ -182,7 +286,7 @@ fastify.post("/command", async (request, reply) => {
         }
       }
 
-   f) Tab Component:
+   g) Tab Component:
       {
         "id": "unique-id",
         "type": "tab",
@@ -200,7 +304,7 @@ fastify.post("/command", async (request, reply) => {
         }
       }
 
-   g) Divider Component:
+   h) Divider Component:
       {
         "id": "unique-id",
         "type": "divider",
@@ -219,7 +323,7 @@ fastify.post("/command", async (request, reply) => {
         }
       }
 
-   h) List Component:
+   i) List Component:
       {
         "id": "unique-id",
         "type": "list",
@@ -237,7 +341,7 @@ fastify.post("/command", async (request, reply) => {
         }
       }
 
-   i) Table Component:
+   j) Table Component:
       {
         "id": "unique-id",
         "type": "table",
@@ -255,38 +359,20 @@ fastify.post("/command", async (request, reply) => {
         }
       }
 
-   j) Header Component:
+   k) Header Component:
       {
         "id": "unique-id",
         "type": "header",
+        "layout": {
+          "width": 1440,
+          "height": 64,
+          "x": 0,
+          "y": 0
+        },
         "properties": {
           "header": {
-            "backgroundColor": { "r": number, "g": number, "b": number } (optional)
+            "backgroundColor": { "r": 0.3, "g": 0.5, "b": 0.9 } (optional)
           }
-        },
-        "layout": {
-          "width": number,
-          "height": number,
-          "x": number (optional),
-          "y": number (optional)
-        },
-        "children": [Node[]]
-      }
-
-   k) Footer Component:
-      {
-        "id": "unique-id",
-        "type": "footer",
-        "properties": {
-          "footer": {
-            "backgroundColor": { "r": number, "g": number, "b": number } (optional)
-          }
-        },
-        "layout": {
-          "width": number,
-          "height": number,
-          "x": number (optional),
-          "y": number (optional)
         },
         "children": [Node[]]
       }
@@ -311,51 +397,18 @@ fastify.post("/command", async (request, reply) => {
         }
       }
 
-   m) Line Component:
-      {
-        "id": "unique-id",
-        "type": "line",
-        "properties": {
-          "line": {
-            "stroke": { "r": number, "g": number, "b": number },
-            "strokeWidth": number
-          }
-        },
-        "layout": {
-          "width": number,
-          "height": number,
-          "x": number (optional),
-          "y": number (optional)
-        }
-      }
-
-   n) Image Component:
-      {
-        "id": "unique-id",
-        "type": "image",
-        "properties": {
-          "image": {
-            "url": "string",
-            "scaleMode": "fill" | "fit" | "tile" | "stretch"
-          }
-        },
-        "layout": {
-          "width": number,
-          "height": number,
-          "x": number (optional),
-          "y": number (optional)
-        }
-      }
-
-3. Component Usage Guidelines:
+4. Component Usage Guidelines:
+   - If a component exists in the library (check the Available Components list), use its componentKey
    - Always include required properties for each component type
    - Use appropriate layout values for each component
    - Follow the exact schema structure
    - Include proper nesting for components that support children
    - Use consistent naming conventions for IDs
    - Maintain proper component hierarchy
+   - ALWAYS include header, navigation, and footer in every screen
+   - Navigation must be consistent across all screens
 
-4. Screen Layout and Positioning:
+5. Screen Layout and Positioning:
    - First screen should be at x: 0
    - Each subsequent screen should be positioned at x: (previous_screen_x + previous_screen_width + 64)
    - All screens should be at y: 0
@@ -363,8 +416,18 @@ fastify.post("/command", async (request, reply) => {
      * Screen 1: x: 0, y: 0
      * Screen 2: x: 1504 (1440 + 64), y: 0
      * Screen 3: x: 3008 (1504 + 1440 + 64), y: 0
+   - Each screen must follow this structure from top to bottom with exact positioning:
+     1. Header (y: 0, height: 64px)
+     2. Navigation (y: 64px, height: 48px)
+     3. Main Content (y: 112px)
+     4. Footer (position: bottom, height: 80px)
+   - Components must not overlap - each component should have its own vertical space
+   - Maintain proper spacing between components (minimum 16px)
+   - Footer must always stick to the bottom of the screen
+   - If content is shorter than screen height, footer should still be at bottom
+   - If content is longer than screen height, footer should follow after content
 
-5. Component Quality Guidelines:
+6. Component Quality Guidelines:
    a) Text Components:
       - Use appropriate font sizes:
         * Headings: 24-32px
@@ -378,7 +441,42 @@ fastify.post("/command", async (request, reply) => {
       - Always include text alignment
       - Use proper line heights (1.2-1.5)
 
-   b) Buttons:
+   b) Image Components:
+      - ALWAYS use type: "image" for any image content
+      - NEVER use rectangles or other components for images
+      - Image properties must include:
+        * url: Valid image URL
+        * scaleMode: "fill" | "fit" | "tile" | "stretch"
+      - Common image sizes:
+        * Hero images: 1440x400px
+        * Thumbnails: 200x200px
+        * Icons: 24x24px or 32x32px
+        * Avatars: 48x48px or 64x64px
+      - Always specify proper dimensions in layout
+      - Use appropriate scaleMode:
+        * "fill" for hero images and backgrounds
+        * "fit" for logos and icons
+        * "tile" for patterns
+        * "stretch" for decorative elements
+      - Example image component:
+        {
+          "id": "hero-image",
+          "type": "image",
+          "properties": {
+            "image": {
+              "url": "https://example.com/image.jpg",
+              "scaleMode": "fill"
+            }
+          },
+          "layout": {
+            "width": 1440,
+            "height": 400,
+            "x": 0,
+            "y": 0
+          }
+        }
+
+   c) Buttons:
       - Standard sizes:
         * Primary: 120-160px width, 40-48px height
         * Secondary: 100-140px width, 36-44px height
@@ -389,14 +487,14 @@ fastify.post("/command", async (request, reply) => {
         * Secondary: { r: 0.95, g: 0.95, b: 0.95 }
       - Always include hover states in properties
 
-   c) Cards:
+   d) Cards:
       - Standard padding: 24px
       - Consistent corner radius: 12px
       - Proper shadow: { type: 'DROP_SHADOW', color: { r: 0, g: 0, b: 0, a: 0.15 }, offset: { x: 0, y: 4 }, radius: 12 }
       - Background color: { r: 1, g: 1, b: 1 }
       - Proper spacing between cards: 24-32px
 
-   d) Input Fields:
+   e) Input Fields:
       - Standard height: 40-48px
       - Proper padding: 12-16px
       - Border color: { r: 0.8, g: 0.8, b: 0.8 }
@@ -405,14 +503,14 @@ fastify.post("/command", async (request, reply) => {
       - Label text size: 14px
       - Error state styling
 
-   e) Headers and Footers:
+   f) Headers and Footers:
       - Header height: 64-80px
       - Footer height: 80-120px
       - Proper padding: 24-32px
       - Background color: { r: 0.3, g: 0.5, b: 0.9 } for header and { r: 0.95, g: 0.95, b: 0.95 } for footer
       - Consistent navigation spacing: 24-32px
 
-   f) Lists and Tables:
+   g) Lists and Tables:
       - Proper row height: 40-48px
       - Consistent column widths
       - Header styling: bold, 14-16px
@@ -420,7 +518,7 @@ fastify.post("/command", async (request, reply) => {
       - Alternating row colors
       - Proper borders and dividers
 
-6. Layout and Spacing Guidelines:
+7. Layout and Spacing Guidelines:
    - Use consistent spacing system:
      * Extra small: 4px
      * Small: 8px
@@ -441,7 +539,7 @@ fastify.post("/command", async (request, reply) => {
      * Maintain minimum widths for components
      * Consider mobile breakpoints
 
-7. Color and Style Guidelines:
+8. Color and Style Guidelines:
    - Use a consistent color palette:
      * Primary: { r: 0.1, g: 0.5, b: 0.9 }
      * Secondary: { r: 0.4, g: 0.4, b: 0.4 }
@@ -457,7 +555,7 @@ fastify.post("/command", async (request, reply) => {
    - Use proper contrast ratios
    - Implement proper hover and active states
 
-8. Response Format:
+9. Response Format:
    IMPORTANT: You must respond with ONLY a valid JSON object, no other text or explanation.
    The JSON must have a top-level property "screens" which is an array of screen objects.
    Each screen must have:
@@ -504,7 +602,7 @@ fastify.post("/command", async (request, reply) => {
      ]
    }
 
-9. Design Principles:
+10. Design Principles:
    - Create clear visual hierarchy
    - Use consistent spacing
    - Ensure proper alignment
@@ -593,36 +691,39 @@ fastify.post("/command", async (request, reply) => {
 
 fastify.get("/components", async (request, reply) => {
   try {
-    // Accept fileKeys as a comma-separated query param
-    const fileKeys = (request.query.fileKeys || "").split(",").map(k => k.trim()).filter(Boolean);
-
-    if (fileKeys.length === 0) {
-      reply.code(400).send({ error: "No fileKeys provided" });
-      return;
-    }
-
-    let allComponents = [];
-    for (const fileKey of fileKeys) {
-      const response = await fetch(
-        `https://api.figma.com/v1/files/${fileKey}/components`,
-        {
-          headers: {
-            "X-Figma-Token": process.env.FIGMA_TOKEN || "",
-          },
-        }
-      );
-      if (!response.ok) {
-        throw new Error(`HTTP error! Status: ${response.status} for fileKey: ${fileKey}`);
+    const libraryKey = "JZRmBokYBOJxnZMco4oGkx";
+    
+    // Fetch components from the library
+    const response = await fetch(
+      `https://api.figma.com/v1/files/${libraryKey}/components`,
+      {
+        headers: {
+          "X-Figma-Token": process.env.FIGMA_TOKEN || "",
+        },
       }
-      const data = await response.json();
-      const parsedData = (data.meta && data.meta.components) || [];
-      allComponents = allComponents.concat(parsedData);
+    );
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! Status: ${response.status}`);
     }
 
-    reply.send(allComponents);
+    const data = await response.json();
+    const components = (data.meta && data.meta.components) || [];
+
+    // Format the response to include only key and page name
+    const formattedComponents = formatComponentList(components);
+    
+    // Log formatted components
+    console.log('Available Components:', JSON.stringify(formattedComponents, null, 2));
+
+    reply.send({
+      success: true,
+      components: formattedComponents
+    });
   } catch (error) {
+    console.error("Error fetching components:", error);
     reply.code(500).send({
-      error: "Failed to fetch Figma response",
+      error: "Failed to fetch Figma components",
       details: error.message,
     });
   }
