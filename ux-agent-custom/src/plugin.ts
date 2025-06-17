@@ -197,7 +197,8 @@ async function generateDesign(prompt: string) {
       screen.layout.width = 1440;
       screen.layout.height = Math.max(900, screen.layout.height || 900);
 
-      const screenNode = await renderNode(screen);
+      // Pass isTopLevel=true for screens
+      const screenNode = await renderNode(screen, true);
       
       // Position the screen
       if (screen.layout.x !== undefined) {
@@ -255,7 +256,7 @@ async function getDesignData(prompt: string): Promise<Design> {
     availableComponents = componentsData.components || [];
     console.log("Available components:", availableComponents);
 
-    // Then send the design request with available components
+    // Then send the design request with available components and layout instructions
     const response = await fetch("http://localhost:3000/command", {
       method: "POST",
       headers: {
@@ -264,7 +265,16 @@ async function getDesignData(prompt: string): Promise<Design> {
       },
       body: JSON.stringify({
         prompt,
-        systemPrompt: "You are a UI/UX design expert creating high-quality, professional designs using primitive components. When creating a header, always follow it with a global navigation component. The global navigation should be placed immediately after the header in the component hierarchy. Every design must include a footer component at the bottom of the page. The footer should be the last component in the page hierarchy.",
+        systemPrompt: `You are a UI/UX design expert creating high-quality, professional designs using primitive components. 
+        When creating a two-column layout:
+        - The main content area must be exactly 900px wide
+        - The sidebar must be exactly 400px wide
+        - The sidebar should be used for widgets like Activity, Timeline, Alerts, etc.
+        - Maintain 32px spacing between columns
+        When creating a header, always follow it with a global navigation component.
+        The global navigation should be placed immediately after the header in the component hierarchy.
+        Every design must include a footer component at the bottom of the page.
+        The footer should be the last component in the page hierarchy.`,
         availableComponents
       }),
     });
@@ -354,7 +364,7 @@ async function loadRequiredFonts() {
 }
 
 // Update the renderNode function to add componentKey
-async function renderNode(data: Node): Promise<SceneNode> {
+async function renderNode(data: Node, isTopLevel = false): Promise<SceneNode> {
   if (!data || typeof data !== 'object') {
     throw new Error('Invalid node data');
   }
@@ -369,7 +379,8 @@ async function renderNode(data: Node): Promise<SceneNode> {
     id: data.id,
     type: data.type,
     hasChildren: data.children && data.children.length > 0,
-    componentKey: data.componentKey
+    componentKey: data.componentKey,
+    isTopLevel
   });
 
   let node: SceneNode;
@@ -590,7 +601,7 @@ async function renderNode(data: Node): Promise<SceneNode> {
   // Create the appropriate node type if no component key or import failed
   switch (data.type) {
     case 'frame':
-      node = await renderFrame(data);
+      node = await renderFrame(data, isTopLevel);
       break;
     case 'text':
       await loadRequiredFonts();
@@ -666,7 +677,7 @@ async function renderNode(data: Node): Promise<SceneNode> {
     const frameNode = node as FrameNode;
     for (const child of data.children) {
       try {
-        const childNode = await renderNode(child);
+        const childNode = await renderNode(child, isTopLevel);
         frameNode.appendChild(childNode);
       } catch (error) {
         console.error('Error rendering child node:', error);
@@ -766,7 +777,7 @@ async function applyLayout(node: SceneNode, layout: Layout) {
 }
 
 // Function to render a frame
-async function renderFrame(data: Node): Promise<FrameNode> {
+async function renderFrame(data: Node, isTopLevel = false): Promise<FrameNode> {
   const frame = figma.createFrame();
   frame.name = data.name || data.id || 'Frame';
   
@@ -775,21 +786,54 @@ async function renderFrame(data: Node): Promise<FrameNode> {
   const height = (data.layout && data.layout.height) || 900;
   frame.resize(width, height);
 
+  // Fixed widths for two-column layout
+  const mainContentWidth = 900;
+  const sidebarWidth = 400;
+  // Total width including spacing between columns
+  const totalWidth = mainContentWidth + sidebarWidth + 32;
+
   // Set default layout mode if not specified
   if (!data.layout || !data.layout.direction) {
     frame.layoutMode = 'VERTICAL';
     frame.primaryAxisAlignItems = 'MIN';
     frame.counterAxisAlignItems = 'MIN';
-    frame.paddingLeft = 24;
     frame.paddingRight = 24;
     frame.paddingTop = 24;
     frame.paddingBottom = 24;
     frame.itemSpacing = 16;
   }
 
+  // For two-column layout, override the children's widths
+  if (data.layout && data.layout.direction === 'horizontal' && data.children && data.children.length === 2) {
+    // Update the layout properties of the children
+    if (data.children[0] && data.children[0].layout) {
+      data.children[0].layout.width = mainContentWidth;
+    }
+    if (data.children[1] && data.children[1].layout) {
+      data.children[1].layout.width = sidebarWidth;
+    }
+    
+    // Set horizontal layout properties
+    frame.layoutMode = 'HORIZONTAL';
+    frame.primaryAxisAlignItems = 'CENTER'; // Center the columns horizontally
+    frame.counterAxisAlignItems = 'MIN';
+    frame.itemSpacing = 32; // spacing between columns
+    frame.paddingRight = 32;
+    frame.paddingTop = 32;
+    frame.paddingBottom = 32;
+
+    // Resize frame to fit the fixed-width columns
+    frame.resize(totalWidth, frame.height);
+  }
+
   // Apply layout properties
   if (data.layout) {
     await applyLayout(frame, data.layout);
+  }
+
+  // Force parent (top-level) frame background color to white
+  if (isTopLevel) {
+    frame.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
   }
 
   return frame;

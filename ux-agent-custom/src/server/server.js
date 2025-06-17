@@ -694,16 +694,16 @@ fastify.get("/components", async (request, reply) => {
     const libraryKey = "JZRmBokYBOJxnZMco4oGkx";
     
     // Fetch components from the library
-    const response = await fetch(
+      const response = await fetch(
       `https://api.figma.com/v1/files/${libraryKey}/components`,
-      {
-        headers: {
-          "X-Figma-Token": process.env.FIGMA_TOKEN || "",
-        },
-      }
-    );
+        {
+          headers: {
+            "X-Figma-Token": process.env.FIGMA_TOKEN || "",
+          },
+        }
+      );
 
-    if (!response.ok) {
+      if (!response.ok) {
       throw new Error(`HTTP error! Status: ${response.status}`);
     }
 
