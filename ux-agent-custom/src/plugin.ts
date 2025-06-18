@@ -102,7 +102,7 @@ interface NodeProperties {
 
 interface Node {
   id: string;
-  type: 'frame' | 'text' | 'rectangle' | 'line' | 'image' | 'button' | 'card' | 'input' | 'tab' | 'divider' | 'list' | 'table' | 'header' | 'navigation' | 'container'| 'footer' | 'file-selector';
+  type: 'frame' | 'text' | 'rectangle' | 'line' | 'image' | 'button' | 'card' | 'input' | 'tab' | 'divider' | 'list' | 'table' | 'header' | 'navigation' | 'container'| 'footer' | 'file-selector'|'textarea';
   name?: string;
   layout?: Layout;
   properties?: NodeProperties;
@@ -1096,8 +1096,8 @@ async function renderInput(data: Node): Promise<FrameNode> {
   const inputRect = figma.createRectangle();
   inputRect.resize(240, 28);
   inputRect.cornerRadius = 6;
-  inputRect.fills = [{ type: 'SOLID', color: { r: 0.97, g: 0.97, b: 0.97 } }];
-  inputRect.strokes = [{ type: 'SOLID', color: { r: 0.8, g: 0.8, b: 0.8 } }];
+  inputRect.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
+  inputRect.strokes = [{ type: 'SOLID', color: { r: 0.36, g: 0.36, b: 0.36 } }];
   inputRect.strokeWeight = 1;
   frame.appendChild(inputRect);
   // Placeholder/value

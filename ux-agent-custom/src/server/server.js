@@ -72,9 +72,9 @@ function generateComponentMatchingInstructions(components) {
 Component Matching Instructions:
 1. For each component you create, check if there's a similar component in the available components list.
 2. Match components based on their names and types. For example:
-   - If creating a "header", look for components with "header" in their pagename
-   - If creating a "button", look for components with "button" in their pagename
-   - If creating a "card", look for components with "card" in their pagename
+   - If creating a "header", look for components with "header" in their name
+   - If creating a "button", look for components with "button" in their name
+   - If creating a "card", look for components with "card" in their name
 3. When a match is found, add the componentKey property to your component using the matched component's key.
 4. Example matches:
    ${components.map(comp => `- For a "${comp.pagename}" component, use componentKey: "${comp.key}"`).join('\n   ')}
@@ -121,7 +121,7 @@ fastify.post("/command", async (request, reply) => {
     const schemaInstructions = `You are a UI/UX design expert creating high-quality, professional designs using given list of components. Follow these guidelines:
 
 1. Available Components:
-   The following components are available in the library. If you need to use any of these components, include their componentKey in the properties:
+   The following components are available in the library.use any of these components if they are similar to the component you are creating, include their componentKey in the properties:
    ${JSON.stringify(formattedComponents, null, 2)}
 
 ${componentMatchingInstructions}
@@ -138,7 +138,6 @@ ${componentMatchingInstructions}
      * Settings/Configuration
      * Checkout/Payment
      * Success/Confirmation
-     * Error/404 pages
    - Use proper nesting and hierarchy for components
    - Maintain consistent spacing and alignment
    - Add descriptive IDs and names for each screen (e.g., "landing-page", "product-details", "checkout-flow")
@@ -148,11 +147,6 @@ ${componentMatchingInstructions}
    - Navigation Requirements:
      * Global navigation must be present on every screen
      * Navigation should be placed immediately after the header
-     * Navigation should include links to all main sections
-     * Navigation should be consistent across all screens
-     * Navigation should be clearly visible and accessible
-     * Navigation should use appropriate spacing and styling
-     * Navigation should indicate the current page/section
 
 3. Component Schema Definitions:
    IMPORTANT: Follow these exact schemas for each component type. If using a component from the library, add the componentKey property:
@@ -161,7 +155,7 @@ ${componentMatchingInstructions}
       {
         "id": "unique-id",
         "type": "frame",
-        "componentKey": "string (optional, if using library component)",
+        "componentKey": "string (if library component found)",
         "layout": {
           "width": number,
           "height": number,
@@ -175,38 +169,8 @@ ${componentMatchingInstructions}
         "children": [Node[]]
       }
 
-   b) Navigation Component:
-      {
-        "id": "unique-id",
-        "type": "navigation",
-        "name": "navigation",
-        "layout": {
-          "width": 1440,
-          "height": 48,
-          "x": 0,
-          "y": 64,
-          "direction": "horizontal",
-          "alignment": "center",
-          "spacing": 32,
-          "padding": 24
-        },
-        "children": [
-          {
-            "id": "nav-item-1",
-            "type": "text",
-            "text": "Home",
-            "properties": {
-              "text": {
-                "fontSize": 16,
-                "color": { "r": 0.1, "g": 0.1, "b": 0.1 },
-                "textAlign": "center"
-              }
-            }
-          }
-        ]
-      }
 
-   c) Text Component:
+   b) Text Component:
       {
         "id": "unique-id",
         "type": "text",
@@ -227,11 +191,12 @@ ${componentMatchingInstructions}
         }
       }
 
-   d) Button Component:
+   c) Button Component:
       {
         "id": "unique-id",
         "type": "button",
         "text": "string",
+        "componentKey": "string (optional, if using library component)",
         "properties": {
           "fill": { "r": number, "g": number, "b": number },
           "cornerRadius": number,
@@ -241,6 +206,29 @@ ${componentMatchingInstructions}
         "layout": {
           "width": number,
           "height": number,
+          "x": number (optional),
+          "y": number (optional)
+        }
+      }
+    d) Textarea Component:
+      {
+        "id": "unique-id",
+        "type": "textarea",
+        "text": "string",
+        "componentKey": "string (optional, if using library component)",
+        "properties": {
+          "input": {
+            "label": "string",
+            "placeholder": "string",
+            "value": "string" (optional),
+            "type": "text",
+            "required": boolean (optional),
+            "disabled": boolean (optional)
+          }
+        },
+        "layout": {
+          "width": number,
+          "height": number, // height should be minimum 70px
           "x": number (optional),
           "y": number (optional)
         }
@@ -268,6 +256,7 @@ ${componentMatchingInstructions}
       {
         "id": "unique-id",
         "type": "input",
+        "componentKey": "string (optional, if using library component)",
         "properties": {
           "input": {
             "label": "string",
@@ -290,6 +279,7 @@ ${componentMatchingInstructions}
       {
         "id": "unique-id",
         "type": "tab",
+        "componentKey": "string (optional, if using library component)",
         "properties": {
           "tab": {
             "label": "string",
@@ -327,6 +317,7 @@ ${componentMatchingInstructions}
       {
         "id": "unique-id",
         "type": "list",
+        "componentKey": "string (optional, if using library component)",
         "properties": {
           "list": {
             "items": string[],
@@ -345,6 +336,7 @@ ${componentMatchingInstructions}
       {
         "id": "unique-id",
         "type": "table",
+        "componentKey": "string (optional, if using library component)",
         "properties": {
           "table": {
             "columns": string[],
@@ -363,6 +355,7 @@ ${componentMatchingInstructions}
       {
         "id": "unique-id",
         "type": "header",
+        "componentKey": 3a068adf26ed6116101337530679fd2ae6b73c13,
         "layout": {
           "width": 1440,
           "height": 64,
@@ -406,7 +399,6 @@ ${componentMatchingInstructions}
    - Use consistent naming conventions for IDs
    - Maintain proper component hierarchy
    - ALWAYS include header, navigation, and footer in every screen
-   - Navigation must be consistent across all screens
 
 5. Screen Layout and Positioning:
    - First screen should be at x: 0
@@ -478,10 +470,10 @@ ${componentMatchingInstructions}
 
    c) Buttons:
       - Standard sizes:
-        * Primary: 120-160px width, 40-48px height
-        * Secondary: 100-140px width, 36-44px height
-      - Proper padding: 16-24px horizontal, 8-12px vertical
-      - Consistent corner radius: 6-8px
+        * Primary: 65-120px width, 32px height
+        * Secondary: 65-120px width, 32px height
+      - Proper padding: 16px horizontal, 8px vertical
+      - Consistent corner radius: 24px
       - Clear visual hierarchy:
         * Primary: { r: 0.1, g: 0.5, b: 0.9 }
         * Secondary: { r: 0.95, g: 0.95, b: 0.95 }
@@ -495,10 +487,9 @@ ${componentMatchingInstructions}
       - Proper spacing between cards: 24-32px
 
    e) Input Fields:
-      - Standard height: 40-48px
+      - Standard height: 32px fixed
       - Proper padding: 12-16px
       - Border color: { r: 0.8, g: 0.8, b: 0.8 }
-      - Focus state color: { r: 0.1, g: 0.5, b: 0.9 }
       - Always include placeholder text
       - Label text size: 14px
       - Error state styling
