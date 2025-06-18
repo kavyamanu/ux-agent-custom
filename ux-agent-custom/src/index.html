@@ -410,6 +410,7 @@
       <form class="input-container" role="form" aria-label="Message input">
         <div class="action-buttons" role="toolbar" aria-label="Additional actions">
           <button id="stop" class="action-button" type="button" disabled>Stop generating</button>
+          <button id="example-prompt" class="action-button" type="button">Try an example</button>
         </div>
         <div class="input-row">
           <textarea id="prompt" name="prompt" placeholder="Describe your project needs..." role="textbox"
@@ -427,10 +428,24 @@
     const promptInput = document.getElementById('prompt');
     const generateBtn = document.getElementById('generate');
     const stopBtn = document.getElementById('stop');
+    const examplePromptBtn = document.getElementById('example-prompt');
     const chatBox = document.getElementById('chat');
     const form = document.querySelector('form');
 
     let isGenerating = false;
+    let currentPromptIndex = 0;
+
+    const examplePrompts = [
+      "Generate a Case Management UI with the left panel containing case details and a chronological timeline of events, and the right panel showing alerts, escalation suggestions, and related knowledge base links.",
+      "Build a contact us page with name, email, message box, and a submit button",
+      "Design a dashboard for an analytics platform with charts and data visualization",
+      "Create a social media profile page with posts, followers, and engagement metrics"    ];
+
+    examplePromptBtn.addEventListener('click', () => {
+      promptInput.value = examplePrompts[currentPromptIndex];
+      currentPromptIndex = (currentPromptIndex + 1) % examplePrompts.length;
+      promptInput.focus();
+    });
 
     function handleSubmit(event) {
       event.preventDefault();
