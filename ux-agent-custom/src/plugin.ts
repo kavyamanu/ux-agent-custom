@@ -380,7 +380,8 @@ async function renderNode(data: Node, isTopLevel = false): Promise<SceneNode> {
     type: data.type,
     hasChildren: data.children && data.children.length > 0,
     componentKey: data.componentKey,
-    isTopLevel
+    isTopLevel,
+    text: data.text
   });
 
   let node: SceneNode;
@@ -408,79 +409,10 @@ async function renderNode(data: Node, isTopLevel = false): Promise<SceneNode> {
           await applyLayout(node, data.layout);
         }
 
-        // Apply AI-generated content to the component
-        if (node.type === 'INSTANCE') {
-          console.log('Processing component instance:', {
-            name: node.name,
-            type: node.type,
-            hasText: data.text,
-            hasProperties: !!data.properties
-          });
-
-          // If we have AI-generated text, apply it to the component
-          if (data.text) {
-            console.log('Applying AI-generated text:', data.text);
-            await updateComponentText(node, data.text);
-          }
-
-          // If we have properties, try to apply them
-          if (data.properties) {
-            // Apply text properties if available
-            if (data.properties.text) {
-              const textNodes = node.findAll(node => node.type === 'TEXT') as TextNode[];
-              for (const textNode of textNodes) {
-                try {
-                  // Load the font
-                  if (typeof textNode.fontName === 'symbol') {
-                    await figma.loadFontAsync({ family: "Inter", style: "Regular" });
-                    textNode.fontName = { family: "Inter", style: "Regular" };
-                  } else {
-                    await figma.loadFontAsync(textNode.fontName);
-                  }
-
-                  // Apply text properties
-                  if (data.properties.text.text) {
-                    textNode.characters = data.properties.text.text;
-                  }
-                  if (data.properties.text.fontSize) {
-                    textNode.fontSize = data.properties.text.fontSize;
-                  }
-                  if (data.properties.text.color) {
-                    textNode.fills = [{ type: 'SOLID', color: data.properties.text.color }];
-                  }
-                } catch (error) {
-                  console.error('Error applying text properties:', error);
-                }
-              }
-            }
-
-            // Apply rectangle properties if available
-            if (data.properties.rectangle) {
-              const rectNodes = node.findAll(node => node.type === 'RECTANGLE') as RectangleNode[];
-              for (const rectNode of rectNodes) {
-                if (data.properties.rectangle.fill) {
-                  rectNode.fills = [{ type: 'SOLID', color: data.properties.rectangle.fill }];
-                }
-                if (data.properties.rectangle.cornerRadius !== undefined) {
-                  rectNode.cornerRadius = data.properties.rectangle.cornerRadius;
-                }
-              }
-            }
-          }
-
-          // If we have children, try to apply their content
-          if (data.children && data.children.length > 0) {
-            const childNodes = node.findAll(node => node.type === 'INSTANCE' || node.type === 'FRAME') as (InstanceNode | FrameNode)[];
-            for (let i = 0; i < Math.min(data.children.length, childNodes.length); i++) {
-              const childData = data.children[i];
-              const childNode = childNodes[i];
-              
-              // Apply text content to child nodes
-              if (childData.text) {
-                await updateComponentText(childNode, childData.text);
-              }
-            }
-          }
+        // If we have AI-generated text, update the component text
+        if (data.text && node.type === 'INSTANCE') {
+          console.log('Updating component text with:', data.text);
+          await updateComponentText(node, data.text);
         }
 
         return node;
@@ -515,79 +447,10 @@ async function renderNode(data: Node, isTopLevel = false): Promise<SceneNode> {
           await applyLayout(node, data.layout);
         }
 
-        // Apply AI-generated content to the component
-        if (node.type === 'INSTANCE') {
-          console.log('Processing component instance:', {
-            name: node.name,
-            type: node.type,
-            hasText: data.text,
-            hasProperties: !!data.properties
-          });
-
-          // If we have AI-generated text, apply it to the component
-          if (data.text) {
-            console.log('Applying AI-generated text:', data.text);
-            await updateComponentText(node, data.text);
-          }
-
-          // If we have properties, try to apply them
-          if (data.properties) {
-            // Apply text properties if available
-            if (data.properties.text) {
-              const textNodes = node.findAll(node => node.type === 'TEXT') as TextNode[];
-              for (const textNode of textNodes) {
-                try {
-                  // Load the font
-                  if (typeof textNode.fontName === 'symbol') {
-                    await figma.loadFontAsync({ family: "Inter", style: "Regular" });
-                    textNode.fontName = { family: "Inter", style: "Regular" };
-                  } else {
-                    await figma.loadFontAsync(textNode.fontName);
-                  }
-
-                  // Apply text properties
-                  if (data.properties.text.text) {
-                    textNode.characters = data.properties.text.text;
-                  }
-                  if (data.properties.text.fontSize) {
-                    textNode.fontSize = data.properties.text.fontSize;
-                  }
-                  if (data.properties.text.color) {
-                    textNode.fills = [{ type: 'SOLID', color: data.properties.text.color }];
-                  }
-                } catch (error) {
-                  console.error('Error applying text properties:', error);
-                }
-              }
-            }
-
-            // Apply rectangle properties if available
-            if (data.properties.rectangle) {
-              const rectNodes = node.findAll(node => node.type === 'RECTANGLE') as RectangleNode[];
-              for (const rectNode of rectNodes) {
-                if (data.properties.rectangle.fill) {
-                  rectNode.fills = [{ type: 'SOLID', color: data.properties.rectangle.fill }];
-                }
-                if (data.properties.rectangle.cornerRadius !== undefined) {
-                  rectNode.cornerRadius = data.properties.rectangle.cornerRadius;
-                }
-              }
-            }
-          }
-
-          // If we have children, try to apply their content
-          if (data.children && data.children.length > 0) {
-            const childNodes = node.findAll(node => node.type === 'INSTANCE' || node.type === 'FRAME') as (InstanceNode | FrameNode)[];
-            for (let i = 0; i < Math.min(data.children.length, childNodes.length); i++) {
-              const childData = data.children[i];
-              const childNode = childNodes[i];
-              
-              // Apply text content to child nodes
-              if (childData.text) {
-                await updateComponentText(childNode, childData.text);
-              }
-            }
-          }
+        // If we have AI-generated text, update the component text
+        if (data.text && node.type === 'INSTANCE') {
+          console.log('Updating component text with:', data.text);
+          await updateComponentText(node, data.text);
         }
 
         return node;
@@ -677,7 +540,7 @@ async function renderNode(data: Node, isTopLevel = false): Promise<SceneNode> {
     const frameNode = node as FrameNode;
     for (const child of data.children) {
       try {
-        const childNode = await renderNode(child, isTopLevel);
+        const childNode = await renderNode(child, false); // Always pass false for children
         frameNode.appendChild(childNode);
       } catch (error) {
         console.error('Error rendering child node:', error);
@@ -834,6 +697,17 @@ async function renderFrame(data: Node, isTopLevel = false): Promise<FrameNode> {
   // Force parent (top-level) frame background color to white
   if (isTopLevel) {
     frame.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
+  }
+
+  // Add 24px left padding to all frames except header, navigation, footer, and main screen
+  const frameName = data.name ? data.name.toLowerCase() : '';
+  const isHeader = frameName.includes('header');
+  const isNavigation = frameName.includes('navigation');
+  const isFooter = frameName.includes('footer');
+  
+  if (!isHeader && !isNavigation && !isFooter && !isTopLevel) {
+    frame.paddingLeft = 24;
+    console.log(`Added 24px left padding to frame: ${data.name}`);
   }
 
   return frame;
@@ -1546,71 +1420,126 @@ function reportProgress(stage: string, message: string) {
 
 async function updateComponentText(node: InstanceNode | FrameNode, text: string) {
   try {
-    // Find all text nodes in the component, including nested ones
-    const textNodes = node.findAll(node => {
-      // Check if the node is a text node
-      if (node.type === 'TEXT') return true;
-      
-      // If it's an instance or frame, check its children
-      if (node.type === 'INSTANCE' || node.type === 'FRAME') {
-        return node.findAll(child => child.type === 'TEXT').length > 0;
-      }
-      
-      return false;
-    }) as TextNode[];
-    
-    console.log(`Found ${textNodes.length} text nodes in component and its children`);
+    console.log('Updating component text for node:', node.name, 'with text:', text);
 
-    // If we have text nodes, update the first one
-    if (textNodes.length > 0) {
-      const textNode = textNodes[0];
-      const parentName = textNode.parent ? textNode.parent.name : 'unknown';
-      console.log('Current text node:', {
-        characters: textNode.characters,
-        fontName: textNode.fontName,
-        name: textNode.name,
-        parent: parentName
-      });
-
-      try {
-        // Load the font
-        await figma.loadFontAsync({ family: "Inter", style: "Regular" });
-        // Update the text
-        textNode.characters = text;
-        console.log('Updated text node with:', text);
-      } catch (error) {
-        console.error('Error updating text node:', error);
-      }
-    } else {
-      // If no text nodes found, try to find input placeholder text
-      const inputNodes = node.findAll(node => {
-        return node.type === 'INSTANCE' || node.type === 'FRAME';
-      }) as (InstanceNode | FrameNode)[];
+    // For component instances, use the override approach
+    if (node.type === 'INSTANCE') {
+      const instance = node as InstanceNode;
       
-      console.log(`Found ${inputNodes.length} potential input nodes`);
+      // Find text nodes by name or type
+      const textNodes = instance.findAll(node => node.type === "TEXT") as TextNode[];
       
-      for (const inputNode of inputNodes) {
-        const inputTextNodes = inputNode.findAll(node => node.type === 'TEXT') as TextNode[];
-        if (inputTextNodes.length > 0) {
-          const textNode = inputTextNodes[0];
-          const parentName = textNode.parent ? textNode.parent.name : 'unknown';
-          console.log('Found input text node:', {
-            characters: textNode.characters,
+      if (textNodes.length > 0) {
+        console.log(`Found ${textNodes.length} text nodes in component instance`);
+        
+        // Log all text nodes for debugging
+        textNodes.forEach((textNode, index) => {
+          console.log(`Text node ${index}:`, {
             name: textNode.name,
-            parent: parentName
+            characters: textNode.characters,
+            visible: textNode.visible,
+            x: textNode.x,
+            y: textNode.y
+          });
+        });
+        
+        // Try to find a text node with specific names first
+        let targetTextNode = textNodes.find(tn => 
+          tn.name.toLowerCase().includes('label') || 
+          tn.name.toLowerCase().includes('text') || 
+          tn.name.toLowerCase().includes('title') ||
+          tn.name.toLowerCase().includes('content')
+        );
+        
+        // If no specific text node found, use the first visible one
+        if (!targetTextNode) {
+          targetTextNode = textNodes.find(tn => tn.visible) || textNodes[0];
+        }
+        
+        if (targetTextNode) {
+          console.log('Target text node:', {
+            name: targetTextNode.name,
+            characters: targetTextNode.characters,
+            visible: targetTextNode.visible,
+            x: targetTextNode.x,
+            y: targetTextNode.y
           });
           
           try {
             // Load the font
-            await figma.loadFontAsync({ family: "Inter", style: "Regular" });
-            // Update the text
-            textNode.characters = text;
-            console.log('Updated input text node with:', text);
-            break;
+            await figma.loadFontAsync(targetTextNode.fontName as FontName);
+            // Use override approach
+            targetTextNode.characters = text;
+            console.log('Successfully updated text node with override');
+            
+            // Verify the update
+            console.log('Updated text node now contains:', targetTextNode.characters);
           } catch (error) {
-            console.error('Error updating input text node:', error);
+            console.error('Error updating text node with override:', error);
           }
+        } else {
+          console.log('No suitable text node found for update');
         }
+      } else {
+        console.log('No text nodes found in component instance');
+      }
+    } else if (node.type === 'FRAME') {
+      // For frames, find text nodes recursively
+      const textNodes = node.findAll(node => node.type === "TEXT") as TextNode[];
+      
+      if (textNodes.length > 0) {
+        console.log(`Found ${textNodes.length} text nodes in frame`);
+        
+        // Log all text nodes for debugging
+        textNodes.forEach((textNode, index) => {
+          console.log(`Text node ${index}:`, {
+            name: textNode.name,
+            characters: textNode.characters,
+            visible: textNode.visible,
+            x: textNode.x,
+            y: textNode.y
+          });
+        });
+        
+        // Try to find a text node with specific names first
+        let targetTextNode = textNodes.find(tn => 
+          tn.name.toLowerCase().includes('label') || 
+          tn.name.toLowerCase().includes('text') || 
+          tn.name.toLowerCase().includes('title') ||
+          tn.name.toLowerCase().includes('content')
+        );
+        
+        // If no specific text node found, use the first visible one
+        if (!targetTextNode) {
+          targetTextNode = textNodes.find(tn => tn.visible) || textNodes[0];
+        }
+        
+        if (targetTextNode) {
+          console.log('Target text node:', {
+            name: targetTextNode.name,
+            characters: targetTextNode.characters,
+            visible: targetTextNode.visible,
+            x: targetTextNode.x,
+            y: targetTextNode.y
+          });
+          
+          try {
+            // Load the font
+            await figma.loadFontAsync(targetTextNode.fontName as FontName);
+            // Use override approach
+            targetTextNode.characters = text;
+            console.log('Successfully updated text node with override');
+            
+            // Verify the update
+            console.log('Updated text node now contains:', targetTextNode.characters);
+          } catch (error) {
+            console.error('Error updating text node with override:', error);
+          }
+        } else {
+          console.log('No suitable text node found for update');
+        }
+      } else {
+        console.log('No text nodes found in frame');
       }
     }
   } catch (error) {

@@ -214,18 +214,8 @@ ${componentMatchingInstructions}
       {
         "id": "unique-id",
         "type": "textarea",
-        "text": "string",
+        "text": "string", // text should be Field Label text
         "componentKey": "string (optional, if using library component)",
-        "properties": {
-          "input": {
-            "label": "string",
-            "placeholder": "string",
-            "value": "string" (optional),
-            "type": "text",
-            "required": boolean (optional),
-            "disabled": boolean (optional)
-          }
-        },
         "layout": {
           "width": number,
           "height": number, // height should be minimum 70px
@@ -610,7 +600,7 @@ ${componentMatchingInstructions}
    - Maintain proper information architecture
    - Use appropriate visual feedback
    - Implement proper error states
-   - Consider loading states
+   - Structure the main content using a two-column layout for better organization and readability
    - Use appropriate animations and transitions`;
 
     const fullPrompt = `${schemaInstructions}\n\nUser Prompt: ${prompt}\n\nIMPORTANT: Respond with ONLY the JSON object, no other text or explanation.`;
