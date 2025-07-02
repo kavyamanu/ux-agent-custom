@@ -129,20 +129,25 @@ interface ComponentsResponse {
 
 // Add this after the interfaces
 let availableComponents: ComponentInfo[] = [];
+let isSelectionMode = false;
+let selectedComponentNode: SceneNode | null = null;
 
 // Handle messages from the UI
-figma.ui.onmessage = async (msg) => {
+figma.ui.onmessage = async (msg: any) => {
+  console.log("Plugin: Received message from UI:", msg);
+  
   if (msg.type === "generate") {
     if (isGenerating) {
       figma.notify("Already generating a design. Please wait or stop the current generation.", { error: true });
       return;
     }
-
+    
     isGenerating = true;
     shouldStop = false;
+    
     try {
       await generateDesign(msg.prompt);
-    } catch (error: unknown) {
+    } catch (error) {
       console.error('Generation failed:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       figma.notify("Failed to generate design: " + errorMessage, { error: true });
@@ -156,8 +161,64 @@ figma.ui.onmessage = async (msg) => {
       isGenerating = false;
       figma.notify("Generation stopped");
     }
+  } else if (msg.type === "enterSelectionMode") {
+    console.log("Plugin: Entering selection mode");
+    isSelectionMode = true;
+    figma.notify("🎯 Selection mode activated. Click on any component to select it for enhancement.");
+  } else if (msg.type === "exitSelectionMode") {
+    console.log("Plugin: Exiting selection mode");
+    isSelectionMode = false;
+    selectedComponentNode = null;
+    figma.notify("Selection mode deactivated.");
+  } else if (msg.type === "enhanceComponent") {
+    console.log("Plugin: Handling enhanceComponent message", {
+      hasSelectedNode: !!selectedComponentNode,
+      componentId: msg.componentId,
+      prompt: msg.prompt
+    });
+    
+    if (selectedComponentNode && msg.componentId && msg.prompt) {
+      console.log("Plugin: Calling enhanceComponent function");
+      await enhanceComponent(selectedComponentNode, msg.prompt);
+    } else {
+      console.log("Plugin: Missing required data for enhancement", {
+        selectedComponentNode: !!selectedComponentNode,
+        componentId: msg.componentId,
+        prompt: msg.prompt
+      });
+    }
   }
 };
+
+// Add selection change handler for component selection
+figma.on("selectionchange", () => {
+  console.log("Plugin: Selection changed", {
+    isSelectionMode,
+    selectionLength: figma.currentPage.selection.length,
+    selection: figma.currentPage.selection.map(s => ({ id: s.id, name: s.name, type: s.type }))
+  });
+  
+  if (isSelectionMode && figma.currentPage.selection.length === 1) {
+    const selected = figma.currentPage.selection[0];
+    selectedComponentNode = selected;
+    
+    console.log("Plugin: Component selected for enhancement", {
+      id: selected.id,
+      name: selected.name,
+      type: selected.type
+    });
+    
+    // Send component selection to UI
+    const message = {
+      type: "componentSelected",
+      componentId: selected.id,
+      componentName: selected.name || selected.type,
+    };
+    
+    console.log("Plugin: Sending component selection to UI", message);
+    figma.ui.postMessage(message);
+  }
+});
 
 // Main function to generate design
 async function generateDesign(prompt: string) {
@@ -271,9 +332,7 @@ async function getDesignData(prompt: string): Promise<Design> {
         - The sidebar must be exactly 400px wide
         - The sidebar should be used for widgets like Activity, Timeline, Alerts, etc.
         - Maintain 32px spacing between columns
-        When creating a header, always follow it with a global navigation component.
-        The global navigation should be placed immediately after the header in the component hierarchy.
-        Every design must include a footer component at the bottom of the page.
+        Every design must include a header component at the top and a footer component at the bottom of the page.
         The footer should be the last component in the page hierarchy.`,
         availableComponents
       }),
@@ -312,11 +371,6 @@ function findMatchingComponentKey(type: string, availableComponents: ComponentIn
   // Skip matching for text type
   if (type === 'text') {
     return undefined;
-  }
-
-  // Special case for header component
-  if (type === 'header') {
-    return '3a068adf26ed6116101337530679fd2ae6b73c13';
   }
 
   // Convert type to lowercase and remove special characters for case-insensitive matching
@@ -506,7 +560,6 @@ async function renderNode(data: Node, isTopLevel = false): Promise<SceneNode> {
       node = await renderTable(data);
       break;
     case 'header':
-      await loadRequiredFonts();
       node = await renderHeader(data);
       break;
     case 'navigation':
@@ -699,7 +752,7 @@ async function renderFrame(data: Node, isTopLevel = false): Promise<FrameNode> {
     frame.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
   }
 
-  // Add 24px left padding to all frames except header, navigation, footer, and main screen
+  // Add 24px left padding to all frames except header (which includes navigation), footer, and main screen
   const frameName = data.name ? data.name.toLowerCase() : '';
   const isHeader = frameName.includes('header');
   const isNavigation = frameName.includes('navigation');
@@ -1226,7 +1279,46 @@ async function renderTable(data: Node): Promise<FrameNode> {
 }
 
 // Function to render a header
-async function renderHeader(data: Node): Promise<FrameNode> {
+async function renderHeader(data: Node): Promise<SceneNode> {
+  // Try to find a header component from available components
+  const headerComponentKey = findMatchingComponentKey('header', availableComponents);
+  
+  if (headerComponentKey) {
+    try {
+      console.log('Attempting to import header component with key:', headerComponentKey);
+      await loadRequiredFonts();
+      
+      const component = await figma.importComponentByKeyAsync(headerComponentKey);
+      if (component) {
+        console.log('Successfully imported header component');
+        const node = component.createInstance();
+        
+        // Set the name if provided
+        if (data.name) {
+          node.name = data.name;
+        }
+
+        // Apply layout if provided
+        if (data.layout) {
+          await applyLayout(node, data.layout);
+        }
+
+        // If we have AI-generated text, update the component text
+        if (data.text && node.type === 'INSTANCE') {
+          console.log('Updating header component text with:', data.text);
+          await updateComponentText(node, data.text);
+        }
+
+        return node;
+      }
+    } catch (error) {
+      console.error('Failed to import header component, falling back to manual rendering:', error);
+    }
+  } else {
+    console.log('No header component found in available components, using manual rendering');
+  }
+
+  // Fallback to manual header rendering
   const frame = figma.createFrame();
   frame.layoutMode = 'HORIZONTAL';
   frame.primaryAxisAlignItems = 'CENTER';
@@ -1545,4 +1637,227 @@ async function updateComponentText(node: InstanceNode | FrameNode, text: string)
   } catch (error) {
     console.error('Error updating component text:', error);
   }
+}
+
+// Function to enhance a selected component
+async function enhanceComponent(node: SceneNode, enhancementPrompt: string) {
+  console.log("Plugin: enhanceComponent function called", {
+    nodeType: node.type,
+    nodeName: node.name,
+    prompt: enhancementPrompt
+  });
+  
+  try {
+    // Get the component type and current properties
+    const componentType = getComponentType(node);
+    const currentProperties = extractComponentProperties(node);
+    
+    console.log("Plugin: Component analysis", {
+      componentType,
+      currentProperties
+    });
+    
+    // Create a focused prompt for this specific component
+    const focusedPrompt = `
+Enhance this ${componentType} component with the following request: "${enhancementPrompt}"
+
+Current component properties: ${JSON.stringify(currentProperties, null, 2)}
+
+Please provide a JSON response with the enhanced component definition that matches the existing component structure but incorporates the requested improvements.
+Use the same component schema as defined in the system but enhance it according to the user's request.
+
+IMPORTANT: Respond with ONLY the JSON object for the enhanced component, no other text.
+`;
+
+    // Send enhancement request to server
+    const requestBody = {
+      prompt: enhancementPrompt,
+      componentType: componentType,
+      currentProperties: currentProperties,
+      availableComponents
+    };
+    
+    // First test if server is reachable
+    try {
+      console.log("Plugin: Testing server connection...");
+      const testResponse = await fetch("http://localhost:3000/test");
+      const testData = await testResponse.text();
+      console.log("Plugin: Server test response:", testData);
+    } catch (testError) {
+      console.error("Plugin: Server connection test failed:", testError);
+    }
+
+    console.log("Plugin: Making fetch request to enhance-component endpoint", {
+      url: "http://localhost:3000/enhance-component",
+      requestBody
+    });
+    
+    const response = await fetch("http://localhost:3000/enhance-component", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(requestBody),
+    });
+    
+    console.log("Plugin: Received response", {
+      status: response.status,
+      ok: response.ok
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Plugin: Server error response:", errorText);
+      throw new Error(`Server error: ${response.status} - ${errorText}`);
+    }
+
+    const responseText = await response.text();
+    console.log("Plugin: Response text:", responseText);
+
+    let enhancedComponent;
+    try {
+      enhancedComponent = JSON.parse(responseText);
+      console.log("Plugin: Parsed response:", enhancedComponent);
+    } catch (parseError) {
+      console.error("Plugin: Failed to parse response as JSON:", parseError);
+      throw new Error(`Invalid JSON response: ${responseText}`);
+    }
+    
+    // Validate the response
+    if (!enhancedComponent || !enhancedComponent.type) {
+      console.error("Plugin: Invalid enhancement response format:", enhancedComponent);
+      throw new Error('Invalid enhancement response format');
+    }
+
+    // Render the enhanced component
+    const enhancedNode = await renderNode(enhancedComponent, false);
+    
+    // Position the enhanced node at the same location as the original
+    enhancedNode.x = node.x;
+    enhancedNode.y = node.y;
+    
+    // Replace the original node with the enhanced one
+    const parent = node.parent;
+    if (parent && 'appendChild' in parent) {
+      const nodeIndex = parent.children.indexOf(node);
+      node.remove();
+      parent.insertChild(nodeIndex, enhancedNode);
+    } else {
+      // If no parent or can't insert at index, just add to current page
+      node.remove();
+      figma.currentPage.appendChild(enhancedNode);
+    }
+    
+    // Update selection to the new enhanced component
+    figma.currentPage.selection = [enhancedNode];
+    selectedComponentNode = enhancedNode;
+    
+    figma.notify("✨ Component enhanced successfully!");
+    
+    // Notify UI of successful enhancement
+    figma.ui.postMessage({
+      type: "componentEnhanced",
+      success: true
+    });
+    
+  } catch (error) {
+    console.error("Error enhancing component:", error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    figma.notify("❌ Failed to enhance component: " + errorMessage, { error: true });
+    
+    // Notify UI of failed enhancement
+    figma.ui.postMessage({
+      type: "componentEnhanced",
+      success: false,
+      error: errorMessage
+    });
+  }
+}
+
+// Helper function to determine component type from Figma node
+function getComponentType(node: SceneNode): string {
+  if (node.type === 'INSTANCE') {
+    // For component instances, try to determine type from name
+    const name = node.name.toLowerCase();
+    if (name.includes('button')) return 'button';
+    if (name.includes('input')) return 'input';
+    if (name.includes('card')) return 'card';
+    if (name.includes('header')) return 'header';
+    if (name.includes('footer')) return 'footer';
+    if (name.includes('navigation')) return 'navigation';
+    return 'component';
+  }
+  
+  if (node.type === 'FRAME') return 'frame';
+  if (node.type === 'TEXT') return 'text';
+  if (node.type === 'RECTANGLE') return 'rectangle';
+  if (node.type === 'LINE') return 'line';
+  
+  return node.type.toLowerCase();
+}
+
+// Helper function to extract current properties from a Figma node
+function extractComponentProperties(node: SceneNode): any {
+  const properties: any = {
+    id: node.id,
+    name: node.name,
+    type: getComponentType(node),
+    layout: {
+      width: node.width,
+      height: node.height,
+      x: node.x,
+      y: node.y
+    }
+  };
+  
+  // Extract type-specific properties
+  if (node.type === 'TEXT') {
+    const textNode = node as TextNode;
+    properties.text = textNode.characters;
+    properties.properties = {
+      text: {
+        fontSize: textNode.fontSize,
+        fontFamily: textNode.fontName,
+        textAlign: textNode.textAlignHorizontal
+      }
+    };
+    
+    if (Array.isArray(textNode.fills) && textNode.fills.length > 0 && textNode.fills[0].type === 'SOLID') {
+      properties.properties.text.color = (textNode.fills[0] as SolidPaint).color;
+    }
+  }
+  
+  if (node.type === 'RECTANGLE') {
+    const rectNode = node as RectangleNode;
+    properties.properties = {
+      rectangle: {
+        cornerRadius: rectNode.cornerRadius
+      }
+    };
+    
+    if (Array.isArray(rectNode.fills) && rectNode.fills.length > 0 && rectNode.fills[0].type === 'SOLID') {
+      properties.properties.rectangle.fill = (rectNode.fills[0] as SolidPaint).color;
+    }
+  }
+  
+  if (node.type === 'FRAME') {
+    const frameNode = node as FrameNode;
+    properties.properties = {
+      frame: {
+        layoutMode: frameNode.layoutMode,
+        paddingLeft: frameNode.paddingLeft,
+        paddingRight: frameNode.paddingRight,
+        paddingTop: frameNode.paddingTop,
+        paddingBottom: frameNode.paddingBottom,
+        itemSpacing: frameNode.itemSpacing
+      }
+    };
+    
+    if (Array.isArray(frameNode.fills) && frameNode.fills.length > 0 && frameNode.fills[0].type === 'SOLID') {
+      properties.properties.frame.fill = (frameNode.fills[0] as SolidPaint).color;
+    }
+  }
+  
+  return properties;
 }

@@ -392,6 +392,129 @@
       margin-top: 4px;
       text-align: center;
     }
+
+    /* Component Enhancement Styles */
+    .enhancement-mode {
+      background-color: #fff3cd;
+      border: 1px solid #ffeaa7;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 16px;
+      display: none;
+    }
+
+    .enhancement-mode.active {
+      display: block;
+    }
+
+    .enhancement-mode-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .enhancement-mode-title {
+      font-weight: 600;
+      color: #856404;
+      font-size: 14px;
+    }
+
+    .exit-enhancement {
+      background: none;
+      border: none;
+      color: #856404;
+      cursor: pointer;
+      font-size: 18px;
+      padding: 0;
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .enhancement-instructions {
+      font-size: 12px;
+      color: #856404;
+      margin-bottom: 8px;
+    }
+
+    .selected-component-info {
+      background: #f8f9fa;
+      border-radius: 4px;
+      padding: 8px;
+      margin-bottom: 8px;
+      font-size: 12px;
+      color: #495057;
+    }
+
+    .component-prompt-container {
+      position: relative;
+    }
+
+    .component-prompt {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #ffeaa7;
+      border-radius: 6px;
+      font-size: 14px;
+      resize: none;
+      min-height: 40px;
+      background: #fff;
+    }
+
+    .component-prompt:focus {
+      outline: none;
+      border-color: #18A0FB;
+      box-shadow: 0 0 0 2px rgba(24, 160, 251, 0.1);
+    }
+
+    .enhance-component-btn {
+      position: absolute;
+      right: 4px;
+      bottom: 4px;
+      background: #18A0FB;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      padding: 4px 8px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .enhance-component-btn:hover {
+      background: #0D8DE3;
+    }
+
+    .enhance-component-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* Mode toggle button styles */
+    .mode-toggle {
+      padding: 6px 12px;
+      border: 1px solid #18A0FB;
+      border-radius: 4px;
+      background: white;
+      color: #18A0FB;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    .mode-toggle.active {
+      background: #18A0FB;
+      color: white;
+    }
+
+    .mode-toggle:hover {
+      background: #f0f8ff;
+    }
+
+    .mode-toggle.active:hover {
+      background: #0D8DE3;
+    }
   </style>
 </head>
 
@@ -436,7 +559,28 @@
         <div class="action-buttons" role="toolbar" aria-label="Additional actions">
           <button id="stop" class="action-button" type="button" disabled>Stop generating</button>
           <button id="example-prompt" class="action-button" type="button">Try an example</button>
+          <button id="toggle-enhancement-mode" class="mode-toggle" type="button">🎯 Enhance Components</button>
         </div>
+
+        <!-- Component Enhancement Mode -->
+        <div id="enhancement-mode" class="enhancement-mode">
+          <div class="enhancement-mode-header">
+            <span class="enhancement-mode-title">🎯 Component Enhancement Mode</span>
+            <button id="exit-enhancement" class="exit-enhancement" type="button">×</button>
+          </div>
+          <div class="enhancement-instructions">
+            Click on any component in Figma to select it, then describe how you'd like to enhance it.
+          </div>
+          <div id="selected-component-info" class="selected-component-info" style="display: none;">
+            Selected: <span id="selected-component-name">None</span>
+          </div>
+          <div class="component-prompt-container">
+            <textarea id="component-prompt" class="component-prompt"
+              placeholder="Describe how you'd like to enhance the selected component..." disabled></textarea>
+            <button id="enhance-component" class="enhance-component-btn" type="button" disabled>Enhance</button>
+          </div>
+        </div>
+
         <div class="input-row">
           <textarea id="prompt" name="prompt" placeholder="Describe your project needs..." role="textbox"
             aria-labelledby="prompt-label" aria-describedby="prompt-description"></textarea>
@@ -457,22 +601,120 @@
     const chatBox = document.getElementById('chat');
     const form = document.querySelector('form');
 
+    // Enhancement mode elements
+    const toggleEnhancementBtn = document.getElementById('toggle-enhancement-mode');
+    const enhancementMode = document.getElementById('enhancement-mode');
+    const exitEnhancementBtn = document.getElementById('exit-enhancement');
+    const selectedComponentInfo = document.getElementById('selected-component-info');
+    const selectedComponentName = document.getElementById('selected-component-name');
+    const componentPrompt = document.getElementById('component-prompt');
+    const enhanceComponentBtn = document.getElementById('enhance-component');
+
     let isGenerating = false;
     let currentPromptIndex = 0;
     let generationStartTime = null;
+    let enhancementModeActive = false;
+    let selectedComponentId = null;
 
     const examplePrompts = [
-      "Generate a Case Management UI with the left panel containing case details and a chronological timeline of events, and the right panel showing alerts, escalation suggestions, and knowledge.",
-      "Build a contact us page with name, email, message box, and a submit button",
       "Create a simple landing page for a personal portfolio with a hero section, about section, and contact form",
-      "Design a pricing page with three pricing tier cards, a comparison table, and a FAQ section below",
-      "Create a social media profile page with posts, followers, and engagement metrics"];
+      "Generate a Case Management UI with the left panel containing case details and a chronological timeline of events, and the right panel showing alerts, escalation suggestions, and knowledge.",
+    ];
 
     examplePromptBtn.addEventListener('click', () => {
       promptInput.value = examplePrompts[currentPromptIndex];
       currentPromptIndex = (currentPromptIndex + 1) % examplePrompts.length;
       promptInput.focus();
     });
+
+    // Enhancement mode event handlers
+    toggleEnhancementBtn.addEventListener('click', () => {
+      enhancementModeActive = !enhancementModeActive;
+      updateEnhancementMode();
+    });
+
+    exitEnhancementBtn.addEventListener('click', () => {
+      enhancementModeActive = false;
+      updateEnhancementMode();
+    });
+
+    enhanceComponentBtn.addEventListener('click', () => {
+      if (selectedComponentId && componentPrompt.value.trim()) {
+        enhanceSelectedComponent();
+      }
+    });
+
+    componentPrompt.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey && selectedComponentId && componentPrompt.value.trim()) {
+        e.preventDefault();
+        enhanceSelectedComponent();
+      }
+    });
+
+    function updateEnhancementMode() {
+      console.log("UI: Updating enhancement mode", { enhancementModeActive });
+
+      if (enhancementModeActive) {
+        enhancementMode.classList.add('active');
+        toggleEnhancementBtn.classList.add('active');
+        toggleEnhancementBtn.textContent = '🎯 Exit Enhancement Mode';
+
+        console.log("UI: Entering enhancement mode, notifying plugin");
+
+        // Notify plugin to enter selection mode
+        parent.postMessage({
+          pluginMessage: {
+            type: "enterSelectionMode"
+          }
+        }, "*");
+      } else {
+        enhancementMode.classList.remove('active');
+        toggleEnhancementBtn.classList.remove('active');
+        toggleEnhancementBtn.textContent = '🎯 Enhance Components';
+        selectedComponentId = null;
+        selectedComponentInfo.style.display = 'none';
+        componentPrompt.disabled = true;
+        componentPrompt.value = '';
+        enhanceComponentBtn.disabled = true;
+
+        console.log("UI: Exiting enhancement mode, notifying plugin");
+
+        // Notify plugin to exit selection mode
+        parent.postMessage({
+          pluginMessage: {
+            type: "exitSelectionMode"
+          }
+        }, "*");
+      }
+    }
+
+    function enhanceSelectedComponent() {
+      if (!selectedComponentId || !componentPrompt.value.trim() || isGenerating) return;
+
+      console.log("UI: Starting component enhancement", {
+        componentId: selectedComponentId,
+        prompt: componentPrompt.value.trim()
+      });
+
+      isGenerating = true;
+      enhanceComponentBtn.disabled = true;
+      enhanceComponentBtn.textContent = 'Enhancing...';
+
+      // Send enhancement request to plugin
+      const message = {
+        pluginMessage: {
+          type: "enhanceComponent",
+          componentId: selectedComponentId,
+          prompt: componentPrompt.value.trim()
+        }
+      };
+
+      console.log("UI: Sending message to plugin:", message);
+      parent.postMessage(message, "*");
+
+      // Clear the prompt
+      componentPrompt.value = '';
+    }
 
     function handleSubmit(event) {
       event.preventDefault();
@@ -591,7 +833,72 @@
       const message = event.data.pluginMessage;
       if (!message) return;
 
-      if (message.type === 'progress') {
+      if (message.type === 'componentSelected') {
+        console.log("UI: Received componentSelected message", {
+          message,
+          enhancementModeActive
+        });
+
+        // Handle component selection in enhancement mode
+        if (enhancementModeActive) {
+          selectedComponentId = message.componentId;
+          selectedComponentName.textContent = message.componentName || 'Unknown Component';
+          selectedComponentInfo.style.display = 'block';
+          componentPrompt.disabled = false;
+          componentPrompt.focus();
+          enhanceComponentBtn.disabled = false;
+
+          console.log("UI: Component selected and UI updated", {
+            selectedComponentId,
+            componentName: message.componentName
+          });
+        } else {
+          console.log("UI: Component selected but enhancement mode not active");
+        }
+      } else if (message.type === 'componentEnhanced') {
+        // Handle component enhancement completion
+        isGenerating = false;
+        enhanceComponentBtn.disabled = false;
+        enhanceComponentBtn.textContent = 'Enhance';
+
+        if (message.success) {
+          // Add success message to chat
+          const successMessage = document.createElement('div');
+          successMessage.className = 'message ai';
+          successMessage.setAttribute('role', 'article');
+          successMessage.innerHTML = `
+            <div class="avatar" role="img" aria-label="AI assistant">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12.1116 10.623H12.1193C11.8039 10.6499 11.5231 10.7037 11.2808 10.7807C11.2808 10.7807 10.927 10.8922 10.3847 10.9691C10.2577 10.9883 10.0962 10.9883 10.0077 10.9883H9.94235C9.85389 10.9883 9.68851 10.9807 9.56543 10.9614C9.02312 10.873 8.67312 10.7499 8.67312 10.7499C8.43081 10.673 8.15004 10.6153 7.83466 10.5807C6.10774 10.4037 5.36158 11.0614 5.31927 11.1845C5.27697 11.3076 5.46543 12.9076 5.60389 13.1614C5.73851 13.4114 5.9462 13.5576 6.13466 13.6383C6.32697 13.7191 7.90774 13.8768 8.43466 13.8037C8.96158 13.7307 9.04235 13.5537 9.18466 13.2845C9.28466 13.0922 9.54235 12.223 9.68466 11.7114C9.71927 11.6114 9.72312 11.4114 9.96543 11.396C10.2077 11.4153 10.2116 11.6191 10.2424 11.7191C10.3808 12.2307 10.6231 13.1076 10.7193 13.2999C10.8539 13.573 10.9347 13.7499 11.4616 13.8345C11.9847 13.9153 13.5693 13.7884 13.7616 13.7114C13.9539 13.6345 14.1616 13.4922 14.3 13.2422C14.4385 12.9922 14.6539 11.396 14.6154 11.273C14.577 11.146 13.8424 10.4768 12.1116 10.623Z" fill="#0250D9"/>
+                <path d="M17.5077 5.59604H17.5116C17.0308 4.9845 16.4616 4.44219 15.8308 3.97681C16.4847 3.86143 16.9808 3.2922 16.9808 2.60758C16.9808 1.83835 16.3577 1.21143 15.5847 1.21143C14.8116 1.21143 14.1885 1.8345 14.1885 2.60758C14.1885 2.76143 14.2193 2.90758 14.2654 3.04604C13.2731 2.57681 12.1885 2.26912 11.0539 2.14989C9.15389 1.94989 7.31927 2.28835 5.73851 3.0345C5.78081 2.89989 5.81158 2.75758 5.81158 2.60758C5.81158 1.83835 5.18851 1.21143 4.41543 1.21143C3.64235 1.21143 3.01927 1.8345 3.01927 2.60758C3.01927 3.2922 3.51158 3.85758 4.15774 3.97681C2.36543 5.29989 1.11543 7.22681 0.830813 9.46143C0.565429 11.5268 1.15389 13.596 2.49235 15.2883C4.00774 17.2037 6.36158 18.4614 8.9462 18.7345C9.30774 18.773 9.66543 18.7922 10.0193 18.7922C14.6308 18.7922 18.6231 15.6614 19.1693 11.423C19.4347 9.35758 18.8462 7.28835 17.5077 5.59604ZM10.0077 16.4076H10.0039C6.53466 16.4037 3.71158 14.0883 3.71158 11.2422C3.71158 10.3845 3.97312 9.56143 4.4462 8.83066C4.48851 9.0922 4.56543 9.31912 4.65004 9.48835C4.76543 9.71912 4.9962 9.85373 5.23851 9.85373C5.33466 9.85373 5.43466 9.8345 5.52697 9.78835C5.85389 9.63066 5.98851 9.23835 5.83851 8.91143C5.75774 8.73835 5.55004 8.16527 6.05389 7.72681C6.54235 8.16912 7.24235 8.68835 8.03081 8.9422C9.50004 9.40758 10.6116 9.1345 10.6577 9.12296C10.8808 9.06527 11.0539 8.89989 11.1231 8.68066C11.1924 8.46143 11.1424 8.22296 10.9924 8.05373C10.25 7.19989 9.8962 6.57681 9.74235 6.19989C12.75 6.60758 13.327 9.00373 13.35 9.11143C13.4154 9.41912 13.6885 9.63066 13.9924 9.63066C14.0385 9.63066 14.0808 9.62681 14.127 9.61527C14.4847 9.5422 14.7116 9.19219 14.6385 8.8345C14.5462 8.38835 14.3039 7.7845 13.8731 7.18066C15.3462 8.12681 16.3 9.59604 16.3 11.246C16.3 14.0922 13.477 16.4076 10.0077 16.4076Z" fill="#0250D9"/>
+              </svg>
+            </div>
+            <div class="message-content">
+              ✨ Component enhanced successfully!
+            </div>
+          `;
+          chatBox.appendChild(successMessage);
+          chatBox.scrollTop = chatBox.scrollHeight;
+        } else {
+          // Add error message to chat
+          const errorMessage = document.createElement('div');
+          errorMessage.className = 'message ai';
+          errorMessage.setAttribute('role', 'article');
+          errorMessage.innerHTML = `
+            <div class="avatar" role="img" aria-label="AI assistant">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12.1116 10.623H12.1193C11.8039 10.6499 11.5231 10.7037 11.2808 10.7807C11.2808 10.7807 10.927 10.8922 10.3847 10.9691C10.2577 10.9883 10.0962 10.9883 10.0077 10.9883H9.94235C9.85389 10.9883 9.68851 10.9807 9.56543 10.9614C9.02312 10.873 8.67312 10.7499 8.67312 10.7499C8.43081 10.673 8.15004 10.6153 7.83466 10.5807C6.10774 10.4037 5.36158 11.0614 5.31927 11.1845C5.27697 11.3076 5.46543 12.9076 5.60389 13.1614C5.73851 13.4114 5.9462 13.5576 6.13466 13.6383C6.32697 13.7191 7.90774 13.8768 8.43466 13.8037C8.96158 13.7307 9.04235 13.5537 9.18466 13.2845C9.28466 13.0922 9.54235 12.223 9.68466 11.7114C9.71927 11.6114 9.72312 11.4114 9.96543 11.396C10.2077 11.4153 10.2116 11.6191 10.2424 11.7191C10.3808 12.2307 10.6231 13.1076 10.7193 13.2999C10.8539 13.573 10.9347 13.7499 11.4616 13.8345C11.9847 13.9153 13.5693 13.7884 13.7616 13.7114C13.9539 13.6345 14.1616 13.4922 14.3 13.2422C14.4385 12.9922 14.6539 11.396 14.6154 11.273C14.577 11.146 13.8424 10.4768 12.1116 10.623Z" fill="#0250D9"/>
+                <path d="M17.5077 5.59604H17.5116C17.0308 4.9845 16.4616 4.44219 15.8308 3.97681C16.4847 3.86143 16.9808 3.2922 16.9808 2.60758C16.9808 1.83835 16.3577 1.21143 15.5847 1.21143C14.8116 1.21143 14.1885 1.8345 14.1885 2.60758C14.1885 2.76143 14.2193 2.90758 14.2654 3.04604C13.2731 2.57681 12.1885 2.26912 11.0539 2.14989C9.15389 1.94989 7.31927 2.28835 5.73851 3.0345C5.78081 2.89989 5.81158 2.75758 5.81158 2.60758C5.81158 1.83835 5.18851 1.21143 4.41543 1.21143C3.64235 1.21143 3.01927 1.8345 3.01927 2.60758C3.01927 3.2922 3.51158 3.85758 4.15774 3.97681C2.36543 5.29989 1.11543 7.22681 0.830813 9.46143C0.565429 11.5268 1.15389 13.596 2.49235 15.2883C4.00774 17.2037 6.36158 18.4614 8.9462 18.7345C9.30774 18.773 9.66543 18.7922 10.0193 18.7922C14.6308 18.7922 18.6231 15.6614 19.1693 11.423C19.4347 9.35758 18.8462 7.28835 17.5077 5.59604ZM10.0077 16.4076H10.0039C6.53466 16.4037 3.71158 14.0883 3.71158 11.2422C3.71158 10.3845 3.97312 9.56143 4.4462 8.83066C4.48851 9.0922 4.56543 9.31912 4.65004 9.48835C4.76543 9.71912 4.9962 9.85373 5.23851 9.85373C5.33466 9.85373 5.43466 9.8345 5.52697 9.78835C5.85389 9.63066 5.98851 9.23835 5.83851 8.91143C5.75774 8.73835 5.55004 8.16527 6.05389 7.72681C6.54235 8.16912 7.24235 8.68835 8.03081 8.9422C9.50004 9.40758 10.6116 9.1345 10.6577 9.12296C10.8808 9.06527 11.0539 8.89989 11.1231 8.68066C11.1924 8.46143 11.1424 8.22296 10.9924 8.05373C10.25 7.19989 9.8962 6.57681 9.74235 6.19989C12.75 6.60758 13.327 9.00373 13.35 9.11143C13.4154 9.41912 13.6885 9.63066 13.9924 9.63066C14.0385 9.63066 14.0808 9.62681 14.127 9.61527C14.4847 9.5422 14.7116 9.19219 14.6385 8.8345C14.5462 8.38835 14.3039 7.7845 13.8731 7.18066C15.3462 8.12681 16.3 9.59604 16.3 11.246C16.3 14.0922 13.477 16.4076 10.0077 16.4076Z" fill="#0250D9"/>
+              </svg>
+            </div>
+            <div class="message-content">
+              ❌ Failed to enhance component: ${message.error || 'Unknown error'}
+            </div>
+          `;
+          chatBox.appendChild(errorMessage);
+          chatBox.scrollTop = chatBox.scrollHeight;
+        }
+      } else if (message.type === 'progress') {
         // Update progress bar
         updateProgress(message.stage, message.message);
       } else if (message.type === 'preview') {

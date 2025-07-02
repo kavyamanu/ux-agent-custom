@@ -143,11 +143,6 @@ ${componentMatchingInstructions}
    - Add descriptive IDs and names for each screen (e.g., "landing-page", "product-details", "checkout-flow")
    - EVERY screen MUST include:
      * A header component at the top
-     * A navigation component immediately after the header
-   - Navigation Requirements:
-     * Global navigation must be present on every screen
-     * Navigation should be placed immediately after the header
-
 3. Component Schema Definitions:
    IMPORTANT: Follow these exact schemas for each component type. If using a component from the library, add the componentKey property:
 
@@ -341,21 +336,16 @@ ${componentMatchingInstructions}
         }
       }
 
-   k) Header Component:
+   k) Header Component (includes navigation):
       {
         "id": "unique-id",
         "type": "header",
-        "componentKey": 3a068adf26ed6116101337530679fd2ae6b73c13,
+        "componentKey": "3a068adf26ed6116101337530679fd2ae6b73c13",
         "layout": {
           "width": 1440,
           "height": 64,
           "x": 0,
           "y": 0
-        },
-        "properties": {
-          "header": {
-            "backgroundColor": { "r": 0.3, "g": 0.5, "b": 0.9 } (optional)
-          }
         },
         "children": [Node[]]
       }
@@ -388,7 +378,8 @@ ${componentMatchingInstructions}
    - Include proper nesting for components that support children
    - Use consistent naming conventions for IDs
    - Maintain proper component hierarchy
-   - ALWAYS include header, navigation, and footer in every screen
+   - When the user provides a prompt, go beyond the literal request — infer the broader intent and generate richer, more context-aware components and content
+   - ALWAYS include header and footer in every screen
 
 5. Screen Layout and Positioning:
    - First screen should be at x: 0
@@ -400,9 +391,8 @@ ${componentMatchingInstructions}
      * Screen 3: x: 3008 (1504 + 1440 + 64), y: 0
    - Each screen must follow this structure from top to bottom with exact positioning:
      1. Header (y: 0, height: 64px)
-     2. Navigation (y: 64px, height: 48px)
-     3. Main Content (y: 112px)
-     4. Footer (position: bottom, height: 80px)
+     2. Main Content (y: 64px)
+     3. Footer (position: bottom, height: 80px)
    - Components must not overlap - each component should have its own vertical space
    - Maintain proper spacing between components (minimum 16px)
    - Footer must always stick to the bottom of the screen
@@ -489,7 +479,7 @@ ${componentMatchingInstructions}
       - Footer height: 80-120px
       - Proper padding: 24-32px
       - Background color: { r: 0.3, g: 0.5, b: 0.9 } for header and { r: 0.95, g: 0.95, b: 0.95 } for footer
-      - Consistent navigation spacing: 24-32px
+      - Consistent component spacing: 24-32px
 
    g) Lists and Tables:
       - Proper row height: 40-48px
@@ -591,7 +581,7 @@ ${componentMatchingInstructions}
    - Follow accessibility guidelines
    - Position screens logically (left to right)
    - Maintain consistent styling across screens
-   - Use clear navigation between screens
+   - Use clear transitions between screens
    - Include appropriate transitions/indicators between screens
    - Ensure proper contrast and readability
    - Implement responsive design patterns
@@ -668,6 +658,151 @@ ${componentMatchingInstructions}
       .code(500)
       .send({ error: "Failed to fetch AI response", details: error.message });
   }
+});
+
+// Component enhancement endpoint
+fastify.post("/enhance-component", async (request, reply) => {
+  console.log("=== ENHANCE-COMPONENT ENDPOINT HIT ===");
+  console.log("Request method:", request.method);
+  console.log("Request URL:", request.url);
+  console.log("Request headers:", request.headers);
+  console.log("Request body:", request.body);
+  
+  try {
+    console.log("Received component enhancement request:", request.body);
+    const { systemPrompt, prompt, availableComponents, componentType, currentProperties } = request.body;
+
+    if (!prompt) {
+      reply
+        .code(400)
+        .send({ error: "Missing required field: prompt" });
+      return;
+    }
+
+    // Create a focused system prompt for component enhancement
+    const enhancementSystemPrompt = `You are a UI/UX expert enhancing a specific component with actual UI elements.
+
+Component Type: ${componentType || 'unknown'}
+Current Properties: ${JSON.stringify(currentProperties || {}, null, 2)}
+
+CRITICAL INSTRUCTIONS:
+1. Analyze the current component and the enhancement request
+2. Keep the same component type and core structure
+3. Create ACTUAL UI elements as children - never just metadata
+4. For frames, always include a "children" array with visible UI components
+5. Use text, button, input, card, and other UI component types
+6. Apply proper layout, spacing, and styling
+7. Return a complete, renderable component structure
+
+COMPONENT SCHEMA REQUIREMENTS:
+- Frame components MUST have children array with UI elements
+- Use these component types: text, button, input, card, rectangle, divider
+- Each child must have proper type, layout, and properties
+- Include real content, not placeholders
+- Apply modern design principles (spacing, typography, colors)
+
+Available Components (use componentKey if matching):
+${JSON.stringify(availableComponents || [], null, 2)}
+
+EXAMPLE Enhanced Frame Structure:
+{
+  "id": "enhanced-component",
+  "type": "frame",
+  "layout": {"width": 400, "height": 200},
+  "children": [
+    {
+      "id": "title",
+      "type": "text", 
+      "text": "Component Title",
+      "properties": {"text": {"fontSize": 18, "color": {"r": 0.1, "g": 0.1, "b": 0.1}}}
+    },
+    {
+      "id": "content",
+      "type": "card",
+      "layout": {"width": 360, "height": 120},
+      "children": [...]
+    }
+  ]
+}
+
+Response Format: Return ONLY the enhanced component JSON with children array, no additional text.`;
+
+    const payload = {
+      model: "llmgateway__OpenAIGPT4Omni_08_06",
+      prompt: `${enhancementSystemPrompt}\n\nEnhancement Request: ${prompt}\n\nIMPORTANT: Respond with ONLY the JSON object for the enhanced component, no other text.`
+    };
+    
+    console.log("Sending component enhancement request to AI with payload:", payload);
+
+    const response = await fetch("https://bot-svc-llm.sfproxy.einstein.dev1-uswest2.aws.sfdc.cl/v1.0/generations", {
+      method: "POST",
+      headers: {
+        "Authorization": `API_KEY 651192c5-37ff-440a-b930-7444c69f4422`,
+        "Content-Type": "application/json",
+        "X-LLM-Provider": "OpenAI",
+        "x-sfdc-core-tenant-id": "core/falcontest1-core4sdb6/00DSB00000Mdzpe",
+        "x-client-feature-id": "FigmaToSLDSCodeGenerator",
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Einstein API error: ${response.status} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    const rawContent = data.generations[0].text;
+    
+    // Clean up the response to ensure it's valid JSON
+    let jsonContent = rawContent
+      .replace(/```json|```/g, "") // Remove markdown code blocks
+      .replace(/^[^{]*/, "") // Remove any text before the first {
+      .replace(/[^}]*$/, "") // Remove any text after the last }
+      .trim();
+
+    try {
+      const parsedData = JSON.parse(jsonContent);
+
+      // Validate component structure
+      if (!parsedData.type) {
+        throw new Error("Enhanced component must have a type");
+      }
+
+      console.log("✅ Successfully enhanced component:", {
+        componentType: parsedData.type,
+        hasChildren: !!(parsedData.children && parsedData.children.length > 0),
+        childrenCount: parsedData.children ? parsedData.children.length : 0
+      });
+      
+      reply.send(parsedData);
+    } catch (parseError) {
+      console.error("❌ Failed to parse component enhancement response:", {
+        rawContent,
+        jsonContent,
+        error: parseError
+      });
+      throw new Error(`Invalid JSON response from AI: ${parseError.message}`);
+    }
+  } catch (error) {
+    console.error("❌ Component enhancement failed:", error);
+    request.log.error(error);
+    reply
+      .code(500)
+      .send({ error: "Failed to enhance component", details: error.message });
+  }
+});
+
+// Test endpoint to verify server is working
+fastify.get("/test", async (request, reply) => {
+  console.log("Test endpoint hit!");
+  reply.send({ message: "Server is working!", timestamp: new Date().toISOString() });
+});
+
+fastify.post("/test-post", async (request, reply) => {
+  console.log("Test POST endpoint hit!");
+  console.log("Request body:", request.body);
+  reply.send({ message: "POST test successful!", body: request.body, timestamp: new Date().toISOString() });
 });
 
 fastify.get("/components", async (request, reply) => {
