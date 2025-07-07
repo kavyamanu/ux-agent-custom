@@ -187,6 +187,23 @@ figma.ui.onmessage = async (msg: any) => {
         prompt: msg.prompt
       });
     }
+  } else if (msg.type === "replaceComponent") {
+    console.log("Plugin: Handling replaceComponent message", {
+      hasSelectedNode: !!selectedComponentNode,
+      componentId: msg.componentId,
+      replaceWith: msg.replaceWith
+    });
+    
+    if (selectedComponentNode && msg.componentId && msg.replaceWith) {
+      console.log("Plugin: Calling replaceComponent function");
+      await replaceComponent(selectedComponentNode, msg.replaceWith);
+    } else {
+      console.log("Plugin: Missing required data for replacement", {
+        selectedComponentNode: !!selectedComponentNode,
+        componentId: msg.componentId,
+        replaceWith: msg.replaceWith
+      });
+    }
   }
 };
 
@@ -1860,4 +1877,76 @@ function extractComponentProperties(node: SceneNode): any {
   }
   
   return properties;
+}
+
+// Replace component with one from the library
+async function replaceComponent(node: SceneNode, replaceWithComponent: ComponentInfo) {
+  try {
+    console.log("Plugin: Starting component replacement", {
+      nodeId: node.id,
+      nodeName: node.name,
+      nodeType: node.type,
+      replaceWith: replaceWithComponent
+    });
+
+    // Store the current node's position and size
+    const currentX = node.x;
+    const currentY = node.y;
+    const currentWidth = node.width;
+    const currentHeight = node.height;
+    const parent = node.parent;
+
+    // Create instance of the selected component
+    const component = await figma.importComponentByKeyAsync(replaceWithComponent.key);
+    if (!component) {
+      throw new Error(`Failed to import component with key: ${replaceWithComponent.key}`);
+    }
+
+    // Create an instance of the component
+    const newInstance = component.createInstance();
+    
+    // Position the new instance at the same location
+    newInstance.x = currentX;
+    newInstance.y = currentY;
+    
+    // Try to maintain similar size if possible
+    try {
+      newInstance.resize(currentWidth, currentHeight);
+    } catch (error) {
+      console.log("Plugin: Could not resize component, using default size", error);
+    }
+
+    // Add the new instance to the parent
+    if (parent && 'appendChild' in parent) {
+      parent.appendChild(newInstance);
+    } else {
+      figma.currentPage.appendChild(newInstance);
+    }
+
+    // Remove the old node
+    node.remove();
+
+    // Select the new component
+    figma.currentPage.selection = [newInstance];
+    figma.viewport.scrollAndZoomIntoView([newInstance]);
+
+    console.log("Plugin: Component replacement completed successfully");
+    
+    // Notify UI of success
+    figma.ui.postMessage({
+      type: 'componentReplaced',
+      success: true,
+      componentName: replaceWithComponent.name
+    });
+
+  } catch (error) {
+    console.error("Plugin: Component replacement failed", error);
+    
+    // Notify UI of error
+    figma.ui.postMessage({
+      type: 'componentReplaced',
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error occurred'
+    });
+  }
 }
