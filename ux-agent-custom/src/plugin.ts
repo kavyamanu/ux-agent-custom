@@ -97,12 +97,11 @@ interface NodeProperties {
   list?: ListProperties;
   table?: TableProperties;
   header?: HeaderFooterProperties;
-  footer?: HeaderFooterProperties;
 }
 
 interface Node {
   id: string;
-  type: 'frame' | 'text' | 'rectangle' | 'line' | 'image' | 'button' | 'card' | 'input' | 'tab' | 'divider' | 'list' | 'table' | 'header' | 'navigation' | 'container'| 'footer' | 'file-selector'|'textarea';
+  type: 'frame' | 'text' | 'rectangle' | 'line' | 'image' | 'button' | 'card' | 'input' | 'tab' | 'divider' | 'list' | 'table' | 'header' | 'navigation' | 'container' | 'file-selector'|'textarea';
   name?: string;
   layout?: Layout;
   properties?: NodeProperties;
@@ -349,8 +348,7 @@ async function getDesignData(prompt: string): Promise<Design> {
         - The sidebar must be exactly 400px wide
         - The sidebar should be used for widgets like Activity, Timeline, Alerts, etc.
         - Maintain 32px spacing between columns
-        Every design must include a header component at the top and a footer component at the bottom of the page.
-        The footer should be the last component in the page hierarchy.`,
+        Every design must include a header component at the top of the page, followed by navigation, then page content following the specified layout structure.`,
         availableComponents
       }),
     });
@@ -583,10 +581,7 @@ async function renderNode(data: Node, isTopLevel = false): Promise<SceneNode> {
       await loadRequiredFonts();
       node = await renderNavigation(data);
       break;
-    case 'footer':
-      await loadRequiredFonts();
-      node = await renderFooter(data);
-      break;
+
     case 'file-selector':
       await loadRequiredFonts();
       node = await renderFileSelector(data);
@@ -719,21 +714,27 @@ async function renderFrame(data: Node, isTopLevel = false): Promise<FrameNode> {
   const height = (data.layout && data.layout.height) || 900;
   frame.resize(width, height);
 
-  // Fixed widths for two-column layout
-  const mainContentWidth = 900;
-  const sidebarWidth = 400;
-  // Total width including spacing between columns
-  const totalWidth = mainContentWidth + sidebarWidth + 32;
+  // Fixed widths for two-column layout (Record Layout - 2/3 and 1/3 split)
+  // Available width after 24px padding: 1440 - (24 * 2) = 1392px
+  const mainContentWidth = 928; // 2/3 of 1392px (available width after padding)
+  const sidebarWidth = 464; // 1/3 of 1392px (available width after padding)
+  // Total width for two-column layout
+  const totalWidth = mainContentWidth + sidebarWidth;
 
   // Set default layout mode if not specified
   if (!data.layout || !data.layout.direction) {
     frame.layoutMode = 'VERTICAL';
     frame.primaryAxisAlignItems = 'MIN';
     frame.counterAxisAlignItems = 'MIN';
+    frame.itemSpacing = 16;
+  }
+
+  // Add 24px padding for page content frames (but not for top-level screens)
+  if (!isTopLevel && data.id === 'page-content') {
+    frame.paddingLeft = 24;
     frame.paddingRight = 24;
     frame.paddingTop = 24;
     frame.paddingBottom = 24;
-    frame.itemSpacing = 16;
   }
 
   // For two-column layout, override the children's widths
@@ -748,12 +749,12 @@ async function renderFrame(data: Node, isTopLevel = false): Promise<FrameNode> {
     
     // Set horizontal layout properties
     frame.layoutMode = 'HORIZONTAL';
-    frame.primaryAxisAlignItems = 'CENTER'; // Center the columns horizontally
+    frame.primaryAxisAlignItems = 'MIN'; // Align columns to start
     frame.counterAxisAlignItems = 'MIN';
-    frame.itemSpacing = 32; // spacing between columns
-    frame.paddingRight = 32;
-    frame.paddingTop = 32;
-    frame.paddingBottom = 32;
+    frame.itemSpacing = 12; // 12px gap between columns/panels
+    // frame.paddingRight = 32;
+    // frame.paddingTop = 32;
+    // frame.paddingBottom = 32;
 
     // Resize frame to fit the fixed-width columns
     frame.resize(totalWidth, frame.height);
@@ -769,14 +770,13 @@ async function renderFrame(data: Node, isTopLevel = false): Promise<FrameNode> {
     frame.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
   }
 
-  // Add 24px left padding to all frames except header (which includes navigation), footer, and main screen
+  // Add 24px left padding to all frames except header (which includes navigation) and main screen
   const frameName = data.name ? data.name.toLowerCase() : '';
   const isHeader = frameName.includes('header');
   const isNavigation = frameName.includes('navigation');
-  const isFooter = frameName.includes('footer');
   
-  if (!isHeader && !isNavigation && !isFooter && !isTopLevel) {
-    frame.paddingLeft = 24;
+  if (!isHeader && !isNavigation && !isTopLevel) {
+    // frame.paddingLeft = 24;
     console.log(`Added 24px left padding to frame: ${data.name}`);
   }
 
@@ -1340,10 +1340,11 @@ async function renderHeader(data: Node): Promise<SceneNode> {
   frame.layoutMode = 'HORIZONTAL';
   frame.primaryAxisAlignItems = 'CENTER';
   frame.counterAxisAlignItems = 'CENTER';
-  frame.paddingLeft = 32;
-  frame.paddingRight = 32;
-  frame.paddingTop = 16;
-  frame.paddingBottom = 16;
+  // Remove header padding for cleaner layout
+  frame.paddingLeft = 0;
+  frame.paddingRight = 0;
+  frame.paddingTop = 0;
+  frame.paddingBottom = 0;
   frame.itemSpacing = 64;
   frame.resize(1440, 64);
   let fill = { r: 0.97, g: 0.97, b: 0.97 };
@@ -1377,7 +1378,7 @@ async function renderNavigation(data: Node): Promise<FrameNode> {
     direction: 'horizontal',
     alignment: 'center',
     spacing: 32,
-    padding: 24
+    padding: 0
   };
 
   // Apply layout
@@ -1393,10 +1394,10 @@ async function renderNavigation(data: Node): Promise<FrameNode> {
   frame.primaryAxisAlignItems = alignment as 'MIN' | 'CENTER' | 'MAX';
   frame.counterAxisAlignItems = 'CENTER';
   frame.itemSpacing = layout.spacing || 32;
-  frame.paddingLeft = layout.padding || 24;
-  frame.paddingRight = layout.padding || 24;
-  frame.paddingTop = layout.padding || 24;
-  frame.paddingBottom = layout.padding || 24;
+  // frame.paddingLeft = layout.padding || 24;
+  // frame.paddingRight = layout.padding || 24;
+  // frame.paddingTop = layout.padding || 24;
+  // frame.paddingBottom = layout.padding || 24;
 
   // Set background color
   frame.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
@@ -1412,61 +1413,7 @@ async function renderNavigation(data: Node): Promise<FrameNode> {
   return frame;
 }
 
-// Function to render a footer
-async function renderFooter(data: Node): Promise<FrameNode> {
-  const frame = figma.createFrame();
-  frame.name = data.name || data.id || 'Footer';
-  
-  // Set initial size
-  const width = (data.layout && data.layout.width) || 1440;
-  const height = (data.layout && data.layout.height) || 80;
-  frame.resize(width, height);
 
-  // Set default layout
-  frame.layoutMode = 'HORIZONTAL';
-  frame.primaryAxisAlignItems = 'CENTER';
-  frame.counterAxisAlignItems = 'CENTER';
-  frame.paddingLeft = 32;
-  frame.paddingRight = 32;
-  frame.paddingTop = 16;
-  frame.paddingBottom = 16;
-  frame.itemSpacing = 32;
-
-  // Set background color
-  let fill = { r: 0.97, g: 0.97, b: 0.97 };
-  if (data.properties && data.properties.footer && data.properties.footer.backgroundColor) {
-    fill = data.properties.footer.backgroundColor;
-  }
-  frame.fills = [{ type: 'SOLID', color: fill }];
-
-  // Add footer text if provided
-  if (data.properties && data.properties.footer && data.properties.footer.text) {
-    const textNode: Node = {
-      id: data.id + '-text',
-      type: 'text',
-      text: data.properties.footer.text,
-      properties: { 
-        text: { 
-          fontSize: 14, 
-          color: { r: 0.2, g: 0.2, b: 0.2 },
-          textAlign: 'center'
-        } 
-      }
-    };
-    const text = await renderText(textNode);
-    frame.appendChild(text);
-  }
-
-  // Render children if any
-  if (data.children && Array.isArray(data.children)) {
-    for (const child of data.children) {
-      const childNode = await renderNode(child);
-      frame.appendChild(childNode);
-    }
-  }
-
-  return frame;
-}
 
 // Function to render a file selector
 async function renderFileSelector(data: Node): Promise<FrameNode> {
@@ -1801,7 +1748,6 @@ function getComponentType(node: SceneNode): string {
     if (name.includes('input')) return 'input';
     if (name.includes('card')) return 'card';
     if (name.includes('header')) return 'header';
-    if (name.includes('footer')) return 'footer';
     if (name.includes('navigation')) return 'navigation';
     return 'component';
   }

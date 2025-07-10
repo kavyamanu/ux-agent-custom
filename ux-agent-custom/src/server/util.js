@@ -12,7 +12,6 @@ Reference JSON Structure:
         "height": number,
         "x": number,
         "y": number,
-        "padding": { "top": 0, "right": number, "bottom": number, "left": number }, 
 
       },
       "children": [

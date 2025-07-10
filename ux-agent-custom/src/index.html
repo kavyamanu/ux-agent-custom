@@ -1324,7 +1324,7 @@
         completionMessage.setAttribute('role', 'article');
 
         const elapsedTime = generationStartTime ? formatElapsedTime(generationStartTime) : '';
-        const timeText = elapsedTime ? ` (${elapsedTime})` : '';
+        const timeText = elapsedTime ? ` Completed in : ${elapsedTime}` : '';
 
         completionMessage.innerHTML = `
           <div class="avatar" role="img" aria-label="AI assistant">

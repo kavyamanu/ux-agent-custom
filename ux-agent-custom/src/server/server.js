@@ -126,42 +126,152 @@ fastify.post("/command", async (request, reply) => {
 
 ${componentMatchingInstructions}
 
-2. Design Structure and Quality Guidelines:
-   - ALWAYS create multiple screens for a complete user flow
-   - Each screen MUST be exactly 1440px wide and minimum 900px high, height can be more than 900px based on the content.
-   - Screens should be positioned horizontally with 64px spacing between them
-   - Each screen should represent a distinct view or state in the user flow
-   - Common screen types include:
-     * Landing/Home page
-     * Product/Service details
-     * User profile/Account
-     * Settings/Configuration
-     * Checkout/Payment
-     * Success/Confirmation
-   - Use proper nesting and hierarchy for components
-   - Maintain consistent spacing and alignment
-   - Add descriptive IDs and names for each screen (e.g., "landing-page", "product-details", "checkout-flow")
-   - EVERY screen MUST include:
-     * A header component at the top
-3. Component Schema Definitions:
-   IMPORTANT: Follow these exact schemas for each component type. If using a component from the library, add the componentKey property:
+2. Page Layout Structure (CRITICAL - Follow This Exact Hierarchy):
+   
+   🔹 Global Page Structure (applies to ALL pages):
+   Every page must include these top-level components in this exact order:
+   1. Header (y: 0, height: 64px)
+   2. Navigation (y: 64, height: 48px) 
+   3. Page Content (y: 112, varies by layout type)
 
-   a) Frame Component:
+   🔹 Page Content Layout Decision Logic:
+   
+   ✅ STANDARD LAYOUT (when prompt does NOT specify split view):
+   - Page Content is a standalone section after Header and Navigation
+   - Choose either List Layout or Record Layout based on context:
+     
+     A) LIST LAYOUT (One Column) - Use when displaying collections/lists:
+        - Page Header: Full-width and sticky at top of page content
+        - Body: Single column layout for item lists
+        - Components inside single column MUST NOT have width - they fill container
+        - Include: filters, sort, charts, actions, "Display" menu
+     
+     B) RECORD LAYOUT (Two Column) - DEFAULT LAYOUT for single records:
+        - Page Header: Full-width and sticky at top of page content
+        - Main Content Area: Takes 2/3 of available space
+        - Sidebar: Takes 1/3 of available space (minimum 400px)
+        - Components inside BOTH areas MUST NOT have width - they fill container
+        - Use for: single record detail with related data in sidebar
+   
+   ✅ SPLIT VIEW LAYOUT (when prompt requires master-detail or queue scenarios):
+   - Left Panel: Main content area that fills remaining space
+   - Right Panel: Fixed 400px width sidebar for navigation/details
+   - Use when: users need to navigate/edit multiple items without leaving screen
+
+       🔸 Component Sizing Rule (CRITICAL):
+    - All components inside ANY layout region MUST fill the full width of their parent container
+    - DO NOT specify width for components inside:
+      * Single column layout (List Layout)
+      * Two column layout (Record Layout - main content & sidebar)
+      * Split view layout (left panel & right panel)
+    - Components should use "fill container" behavior in ALL layouts
+    - Let the parent frame dimensions handle the sizing automatically
+    - Only specify width for the layout containers themselves (sidebars = 400px)
+    - Page content has 24px padding and 12px gap between panels
+
+3. Screen Generation Guidelines:
+   - ALWAYS create multiple screens for a complete user flow
+   - Each screen MUST be exactly 1440px wide and minimum 900px high
+   - Screens positioned horizontally with 64px spacing between them
+   - Each screen represents a distinct view or state in the user flow
+   - Add descriptive IDs and names for each screen
+   - EVERY screen MUST follow the Global Page Structure above
+4. Component Schema Definitions:
+     IMPORTANT: Follow these exact schemas for each component type. If using a component from the library, add the componentKey property:
+
+   a) Frame Component (for layout regions):
       {
         "id": "unique-id",
         "type": "frame",
+        "name": "descriptive-name",
         "componentKey": "string (if library component found)",
         "layout": {
-          "width": number,
+          "width": number, // Optional - omit to fill parent container
           "height": number,
-          "x": number,
-          "y": number,
           "direction": "horizontal" | "vertical",
           "alignment": "start" | "center" | "end",
           "spacing": number,
-          "padding": number
+          "padding": number // Use for page content frames (24px)
         },
         "children": [Node[]]
+      }
+
+   a1) Page Content Frame (use for main content areas):
+      {
+        "id": "page-content",
+        "type": "frame", 
+        "name": "Page Content",
+        "layout": {
+          "width": 1440, // Full screen width
+          "height": number,
+          "x": 0,
+          "y": 112, // After header (64px) + navigation (48px)
+          "direction": "horizontal" | "vertical", // horizontal for split view, vertical for standard
+          "alignment": "start",
+          "spacing": 12, // Gap between panels for split view
+          "padding": 24 // 24px padding around page content
+        },
+        "children": [Node[]]
+      }
+
+   a2) Split View Panels:
+      // Left Panel (for split view layouts) - Main content area
+      {
+        "id": "left-panel",
+        "type": "frame",
+        "name": "Left Panel",
+        "layout": {
+          "height": number,
+          "direction": "vertical",
+          "alignment": "start",
+          "spacing": 16
+        },
+        "children": [Node[]] // Children should NOT have width - will fill container
+      }
+      
+      // Right Panel (for split view layouts) - Sidebar  
+      {
+        "id": "right-panel",
+        "type": "frame",
+        "name": "Right Panel",
+        "layout": {
+          "width": 400, // Fixed width for right sidebar
+          "height": number,
+          "direction": "vertical", 
+          "alignment": "start",
+          "spacing": 16
+        },
+        "children": [Node[]] // Children should NOT have width - will fill container
+      }
+
+   a3) Record Layout Components:
+      // Main Content Area (takes 2/3 of available space)
+      {
+        "id": "main-content",
+        "type": "frame",
+        "name": "Main Content",
+        "layout": {
+          "height": number,
+          "direction": "vertical",
+          "alignment": "start", 
+          "spacing": 24
+        },
+        "children": [Node[]] // Children should NOT have width - will fill container
+      }
+      
+      // Sidebar (takes 1/3 of available space)
+      {
+        "id": "sidebar",
+        "type": "frame",
+        "name": "Sidebar",
+        "layout": {
+          "width": 400, // Minimum sidebar width
+          "height": number,
+          "direction": "vertical",
+          "alignment": "start",
+          "spacing": 16
+        },
+        "children": [Node[]] // Children should NOT have width - will fill container
       }
 
 
@@ -179,10 +289,8 @@ ${componentMatchingInstructions}
           }
         },
         "layout": {
-          "width": number,
-          "height": number,
-          "x": number (optional),
-          "y": number (optional)
+          "width": number (optional), // Omit to fill parent container
+          "height": number
         }
       }
 
@@ -199,10 +307,8 @@ ${componentMatchingInstructions}
           "strokeWidth": number (optional)
         },
         "layout": {
-          "width": number,
-          "height": number,
-          "x": number (optional),
-          "y": number (optional)
+          "width": number (optional), // Omit to fill parent container
+          "height": number
         }
       }
     d) Textarea Component:
@@ -212,10 +318,8 @@ ${componentMatchingInstructions}
         "text": "string", // text should be Field Label text
         "componentKey": "string (optional, if using library component)",
         "layout": {
-          "width": number,
-          "height": number, // height should be minimum 70px
-          "x": number (optional),
-          "y": number (optional)
+          "width": number (optional), // Omit to fill parent container
+          "height": number // height should be minimum 70px
         }
       }
 
@@ -253,10 +357,8 @@ ${componentMatchingInstructions}
           }
         },
         "layout": {
-          "width": number,
-          "height": number,
-          "x": number (optional),
-          "y": number (optional)
+          "width": number (optional), // Omit to fill parent container
+          "height": number
         }
       }
 
@@ -336,16 +438,32 @@ ${componentMatchingInstructions}
         }
       }
 
-   k) Header Component (includes navigation):
+   k) Header Component (REQUIRED on every page):
       {
-        "id": "unique-id",
+        "id": "header",
         "type": "header",
-        "componentKey": "3a068adf26ed6116101337530679fd2ae6b73c13",
+        "name": "Header",
+        "componentKey": "0b137239c565232ebfeb0b0e5f78f733bce22306",
         "layout": {
-          "width": 1440,
-          "height": 64,
+          "width": 1440, // Full screen width
+          "height": 64, // Fixed header height
           "x": 0,
-          "y": 0
+          "y": 0 // Always at top
+        },
+        "children": [Node[]]
+      }
+
+   k1) Navigation Component (REQUIRED on every page):
+      {
+        "id": "navigation", 
+        "type": "navigation",
+        "name": "Navigation",
+        "componentKey": "8cdbc8664f35fd6e12de94d8c7a9e90214317023",
+        "layout": {
+          "width": 1440, // Full screen width
+          "height": 48, // Fixed navigation height
+          "x": 0,
+          "y": 64 // Always directly after header
         },
         "children": [Node[]]
       }
@@ -370,18 +488,48 @@ ${componentMatchingInstructions}
         }
       }
 
-4. Component Usage Guidelines:
-   - If a component exists in the library (check the Available Components list), use its componentKey
+5. Layout Decision Logic and Component Usage:
+   
+   🔹 STEP 1: Analyze the prompt to determine layout type
+   - Does the prompt mention "split view", "master-detail", "queue", or "working through multiple items"?
+     → YES: Use SPLIT VIEW LAYOUT
+     → NO: Use STANDARD LAYOUT
+   
+   🔹 STEP 2: For STANDARD LAYOUT, choose content type:
+   - Does the prompt involve displaying lists, collections, or multiple records?
+     → YES: Use LIST LAYOUT (one column)
+     → NO: Use RECORD LAYOUT (two column - default)
+   
+   🔹 STEP 3: Build the page structure:
+   Every page MUST follow this exact hierarchy:
+   1. Header (id: "header", y: 0, height: 64px)
+   2. Navigation (id: "navigation", y: 64, height: 48px)  
+   3. Page Content (id: "page-content", y: 112, layout varies by type)
+   
+   🔹 STEP 4: Apply component sizing rules:
+   - Components inside ALL layout regions should fill their parent container width automatically
+   - NEVER specify width for components inside:
+     * Single column layout
+     * Two column layout (main content & sidebar)
+     * Split view layout (left panel & right panel)
+   - Use "fill container" behavior for proper responsive design
+   - Only specify width for layout containers themselves (sidebars = 400px)
+   - Use appropriate spacing between components (16-24px)
+   
+   🔹 STEP 5: Component implementation guidelines:
+   - If a component exists in the library (check Available Components), use its componentKey
    - Always include required properties for each component type
-   - Use appropriate layout values for each component
+   - For width: OMIT width property for components inside ALL layout regions (they will fill container)
+   - Only specify width for layout containers themselves (sidebars = 400px) or standalone elements
+   - Always specify height for all components
    - Follow the exact schema structure
    - Include proper nesting for components that support children
    - Use consistent naming conventions for IDs
    - Maintain proper component hierarchy
    - When the user provides a prompt, go beyond the literal request — infer the broader intent and generate richer, more context-aware components and content
-   - ALWAYS include header and footer in every screen
+   - ALWAYS include header and navigation in every screen but DO NOT include footer
 
-5. Screen Layout and Positioning:
+6. Screen Layout and Positioning:
    - First screen should be at x: 0
    - Each subsequent screen should be positioned at x: (previous_screen_x + previous_screen_width + 64)
    - All screens should be at y: 0
@@ -389,15 +537,17 @@ ${componentMatchingInstructions}
      * Screen 1: x: 0, y: 0
      * Screen 2: x: 1504 (1440 + 64), y: 0
      * Screen 3: x: 3008 (1504 + 1440 + 64), y: 0
-   - Each screen must follow this structure from top to bottom with exact positioning:
-     1. Header (y: 0, height: 64px)
-     2. Main Content (y: 64px)
-     3. Footer (position: bottom, height: 80px)
-   - Components must not overlap - each component should have its own vertical space
-   - Maintain proper spacing between components (minimum 16px)
-   - Footer must always stick to the bottom of the screen
-   - If content is shorter than screen height, footer should still be at bottom
-   - If content is longer than screen height, footer should follow after content
+   
+   🔹 MANDATORY Screen Structure (every screen MUST follow this):
+   1. Header (id: "header", y: 0, height: 64px, width: 1440px)
+   2. Navigation (id: "navigation", y: 64, height: 48px, width: 1440px)
+   3. Page Content (id: "page-content", y: 112, varies by layout type)
+   
+   🔹 Component Positioning Rules:
+   - Components must not overlap - each component should have its own space
+   - Maintain proper spacing between components (16-24px)
+   - All components within a layout region must fill the full width of that region
+   - Use the exact positioning values specified in the layout schemas above
 
 6. Component Quality Guidelines:
    a) Text Components:
@@ -474,11 +624,10 @@ ${componentMatchingInstructions}
       - Label text size: 14px
       - Error state styling
 
-   f) Headers and Footers:
+   f) Headers:
       - Header height: 64-80px
-      - Footer height: 80-120px
       - Proper padding: 24-32px
-      - Background color: { r: 0.3, g: 0.5, b: 0.9 } for header and { r: 0.95, g: 0.95, b: 0.95 } for footer
+      - Background color: { r: 0.3, g: 0.5, b: 0.9 }
       - Consistent component spacing: 24-32px
 
    g) Lists and Tables:
@@ -530,43 +679,72 @@ ${componentMatchingInstructions}
    IMPORTANT: You must respond with ONLY a valid JSON object, no other text or explanation.
    The JSON must have a top-level property "screens" which is an array of screen objects.
    Each screen must have:
-   - id: Unique identifier (e.g., "landing-page", "product-details")
+   - id: Unique identifier (e.g., "dashboard", "user-profile")
    - type: "frame" (NOT "container" or any other type)
+   - name: Descriptive name for the screen
    - layout: { width: 1440, height: 900, x: number, y: 0 }
-   - children: Array of components
+   - children: Array with EXACTLY 3 components (Header, Navigation, Page Content)
 
-   Example of high-quality JSON:
+   Example of proper screen structure:
    {
      "screens": [
        {
-         "id": "landing-page",
+         "id": "dashboard",
          "type": "frame",
+         "name": "Dashboard",
          "layout": { "width": 1440, "height": 900, "x": 0, "y": 0 },
          "children": [
            {
              "id": "header",
              "type": "header",
-             "layout": { "width": 1440, "height": 64 },
-             "properties": {
-               "header": {
-                 "backgroundColor": { "r": 0.3, "g": 0.5, "b": 0.5 }
-               }
-             },
-             "children": [
-               {
-                 "id": "nav-logo",
-                 "type": "text",
-                 "text": "Logo",
-                 "properties": {
-                   "text": {
-                     "fontSize": 24,
-                     "color": { "r": 0.1, "g": 0.1, "b": 0.1 },
-                     "textAlign": "left"
-                   }
-                 },
-                 "layout": { "width": 120, "height": 32 }
-               }
-             ]
+             "name": "Header",
+             "layout": { "width": 1440, "height": 64, "x": 0, "y": 0 },
+             "children": [/* header content */]
+           },
+           {
+             "id": "navigation",
+             "type": "navigation", 
+             "name": "Navigation",
+             "layout": { "width": 1440, "height": 48, "x": 0, "y": 64 },
+             "children": [/* navigation content */]
+           },
+           {
+             "id": "page-content",
+             "type": "frame",
+             "name": "Page Content",
+                           "layout": { 
+                "width": 1440, 
+                "height": 788, 
+                "x": 0, 
+                "y": 112,
+                "direction": "horizontal", // or "vertical" for standard layout
+                "alignment": "start",
+                "spacing": 12, // Gap between panels
+                "padding": 24 // 24px padding around page content
+              },
+              "children": [
+                // For Record Layout (two column):
+                {
+                  "id": "main-content",
+                  "type": "frame",
+                  "name": "Main Content",
+                  "layout": { "height": 788, "direction": "vertical", "spacing": 24 },
+                  "children": [
+                    // Components should NOT have width - will fill container
+                    {"type": "text", "layout": {"height": 24}}
+                  ]
+                },
+                {
+                  "id": "sidebar", 
+                  "type": "frame",
+                  "name": "Sidebar",
+                  "layout": { "width": 400, "height": 788, "direction": "vertical", "spacing": 16 },
+                  "children": [
+                    // Components should NOT have width - will fill container
+                    {"type": "card", "layout": {"height": 200}}
+                  ]
+                }
+              ]
            }
          ]
        }
@@ -694,12 +872,20 @@ CRITICAL INSTRUCTIONS:
 6. Apply proper layout, spacing, and styling
 7. Return a complete, renderable component structure
 
+COMPONENT SIZING RULES:
+- Components inside ALL layout regions MUST fill the full width of their parent container
+- NEVER specify width for components inside any layout region - they will fill container
+- Only specify width for layout containers themselves (sidebars = 400px) or standalone elements
+- Use appropriate height based on content
+- Apply consistent spacing between components (16-24px)
+
 COMPONENT SCHEMA REQUIREMENTS:
 - Frame components MUST have children array with UI elements
 - Use these component types: text, button, input, card, rectangle, divider
 - Each child must have proper type, layout, and properties
 - Include real content, not placeholders
 - Apply modern design principles (spacing, typography, colors)
+- Components inside frames must fill the frame's width
 
 Available Components (use componentKey if matching):
 ${JSON.stringify(availableComponents || [], null, 2)}
@@ -708,19 +894,21 @@ EXAMPLE Enhanced Frame Structure:
 {
   "id": "enhanced-component",
   "type": "frame",
+  "name": "Enhanced Component",
   "layout": {"width": 400, "height": 200},
   "children": [
     {
       "id": "title",
       "type": "text", 
       "text": "Component Title",
-      "properties": {"text": {"fontSize": 18, "color": {"r": 0.1, "g": 0.1, "b": 0.1}}}
+      "properties": {"text": {"fontSize": 18, "color": {"r": 0.1, "g": 0.1, "b": 0.1}}},
+      "layout": {"width": 400, "height": 24}
     },
     {
       "id": "content",
       "type": "card",
-      "layout": {"width": 360, "height": 120},
-      "children": [...]
+      "layout": {"width": 400, "height": 120},
+      "children": [/* child components that fill the card width */]
     }
   ]
 }
