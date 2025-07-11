@@ -726,7 +726,10 @@ async function renderFrame(data: Node, isTopLevel = false): Promise<FrameNode> {
     frame.layoutMode = 'VERTICAL';
     frame.primaryAxisAlignItems = 'MIN';
     frame.counterAxisAlignItems = 'MIN';
-    frame.itemSpacing = 16;
+    // Only set default spacing if not explicitly specified
+    if (!data.layout || data.layout.spacing === undefined) {
+      frame.itemSpacing = 16;
+    }
   }
 
   // Add 24px padding for page content frames (but not for top-level screens)
@@ -765,9 +768,11 @@ async function renderFrame(data: Node, isTopLevel = false): Promise<FrameNode> {
     await applyLayout(frame, data.layout);
   }
 
-  // Force parent (top-level) frame background color to white
+  // Set background color - force white for top-level frames or use specified fill
   if (isTopLevel) {
-    frame.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
+    frame.fills = [{ type: 'SOLID', color: { "r": 0.953, "g": 0.953, "b": 0.953 } }];
+  } else if (data.properties && data.properties.fill) {
+    frame.fills = [{ type: 'SOLID', color: data.properties.fill }];
   }
 
   // Add 24px left padding to all frames except header (which includes navigation) and main screen
