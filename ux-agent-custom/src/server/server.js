@@ -78,7 +78,7 @@ Component Matching Instructions:
 3. When a match is found, add the componentKey property to your component using the matched component's key.
 4. Example matches:
    ${components.map(comp => `- For a "${comp.pagename}" component, use componentKey: "${comp.key}"`).join('\n   ')}
-5. If no match is found, create the component without a componentKey.
+5. If no match is found, create a custom component wrapped in a card container for consistency.
 `;
 }
 
@@ -181,6 +181,8 @@ ${componentMatchingInstructions}
      IMPORTANT: Follow these exact schemas for each component type. If using a component from the library, add the componentKey property:
      
      🚨 IMPORTANT SPACING RULE: Use spacing: 0 for top-level screens (no gaps between header, navigation, page content). Use spacing: 12-24px for layout containers (gaps between child components).
+     
+     🚨 IMPORTANT CUSTOM COMPONENT RULE: If a component is NOT found in the library (no componentKey), wrap it inside a card container for consistency. All custom components (text, button, input, etc.) must be placed within a card to ensure consistent structure and styling.
 
    a) Frame Component (for layout regions):
       {
@@ -268,7 +270,7 @@ ${componentMatchingInstructions}
           "alignment": "start",
           "spacing": 16
         },
-        "children": [Node[]] // Children width should follow fill container
+        "children": [Node[]] // Children width should follow fill container, each child should be wrapped in card instead of frame
       }
       
       // Right Panel (for split view layouts) - Sidebar  
@@ -286,7 +288,7 @@ ${componentMatchingInstructions}
           "alignment": "start",
           "spacing": 16
         },
-        "children": [Node[]] // Children width should follow fill container that is 400px
+        "children": [Node[]] // Children width should follow fill container that is 400px, each child should be wrapped in card instead of frame
       }
 
    a3) Record Layout Components:
@@ -306,7 +308,7 @@ ${componentMatchingInstructions}
           "alignment": "start", 
           "spacing": 24
         },
-        "children": [Node[]] // Children should NOT have width - will fill container
+        "children": [Node[]] // Children should NOT have width - will fill container, each child should be wrapped in card instead of frame
       }
       
       // Sidebar (takes 1/3 of available space)
@@ -324,7 +326,7 @@ ${componentMatchingInstructions}
           "alignment": "start",
           "spacing": 16
         },
-        "children": [Node[]] // Children should NOT have width - will fill container
+        "children": [Node[]] // Children should NOT have width - will fill container, each child should be wrapped in card instead of frame
       }
 
 
@@ -496,7 +498,7 @@ ${componentMatchingInstructions}
         "id": "header",
         "type": "header",
         "name": "Header",
-        "componentKey": "0b137239c565232ebfeb0b0e5f78f733bce22306",
+        "componentKey": "1eb0a72a25342b3a283c128d55e7a8843f359f01",
         "layout": {
           "width": 1440, // Full screen width
           "height": 64, // Fixed header height
@@ -554,6 +556,69 @@ ${componentMatchingInstructions}
         }
       }
 
+   m) Custom Component Wrapper Pattern:
+      🚨 CRITICAL: When creating custom components (no componentKey found), wrap them in a card for consistency:
+      
+      // Example: Custom Button wrapped in Card
+      {
+        "id": "custom-button-wrapper",
+        "type": "card",
+        "properties": {
+          "fill": { "r": 1, "g": 1, "b": 1 },
+          "cornerRadius": 12,
+          "stroke": { "r": 0.8, "g": 0.8, "b": 0.8 },
+          "strokeWidth": 1
+        },
+        "layout": {
+          "height": 48
+        },
+        "children": [
+          {
+            "id": "custom-button",
+            "type": "button",
+            "text": "Custom Button",
+            "properties": {
+              "fill": { "r": 0.1, "g": 0.5, "b": 0.9 },
+              "cornerRadius": 8
+            },
+            "layout": {
+              "height": 32
+            }
+          }
+        ]
+      }
+      
+      // Example: Custom Text wrapped in Card
+      {
+        "id": "custom-text-wrapper",
+        "type": "card", 
+        "properties": {
+          "fill": { "r": 1, "g": 1, "b": 1 },
+          "cornerRadius": 12,
+          "stroke": { "r": 0.8, "g": 0.8, "b": 0.8 },
+          "strokeWidth": 1
+        },
+        "layout": {
+          "height": 40
+        },
+        "children": [
+          {
+            "id": "custom-text",
+            "type": "text",
+            "text": "Custom Text Component",
+            "properties": {
+              "text": {
+                "fontSize": 16,
+                "color": { "r": 0.1, "g": 0.1, "b": 0.1 }
+              }
+            },
+            "layout": {
+              "height": 24
+            }
+          }
+        ]
+      }
+
 5. Layout Decision Logic and Component Usage:
    
    🔹 STEP 1: Analyze the prompt to determine layout type
@@ -588,6 +653,7 @@ ${componentMatchingInstructions}
    
    🔹 STEP 5: Component implementation guidelines:
    - If a component exists in the library (check Available Components), use its componentKey
+   - If a component is NOT found in the library, wrap it in a card container for consistency
    - Always include required properties for each component type
    - For width: OMIT width property for components inside ALL layout regions (they will fill container)
    - Only specify width for layout containers themselves (sidebars = 400px) or standalone elements
@@ -1002,6 +1068,7 @@ COMPONENT SCHEMA REQUIREMENTS:
 - Include real content, not placeholders
 - Apply modern design principles (spacing, typography, colors)
 - Components inside frames must fill the frame's width
+- 🚨 CRITICAL: If creating custom components (no componentKey), wrap them in a card container for consistency
 
 Available Components (use componentKey if matching):
 ${JSON.stringify(availableComponents || [], null, 2)}

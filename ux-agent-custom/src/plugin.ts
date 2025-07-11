@@ -1867,15 +1867,16 @@ async function replaceComponent(node: SceneNode, replaceWithComponent: Component
       console.log("Plugin: Could not resize component, using default size", error);
     }
 
-    // Add the new instance to the parent
+    // Replace the component at the same position in the parent
     if (parent && 'appendChild' in parent) {
-      parent.appendChild(newInstance);
+      const nodeIndex = parent.children.indexOf(node);
+      node.remove();
+      parent.insertChild(nodeIndex, newInstance);
     } else {
+      // If no parent or can't insert at index, just add to current page
+      node.remove();
       figma.currentPage.appendChild(newInstance);
     }
-
-    // Remove the old node
-    node.remove();
 
     // Select the new component
     figma.currentPage.selection = [newInstance];
