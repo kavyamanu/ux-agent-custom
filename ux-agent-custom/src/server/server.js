@@ -77,7 +77,7 @@ Component Matching Instructions:
    - If creating a "card", look for components with "card" in their name
 3. When a match is found, add the componentKey property to your component using the matched component's key.
 4. Example matches:
-   ${components.map(comp => `- For a "${comp.pagename}" component, use componentKey: "${comp.key}"`).join('\n   ')}
+   ${components.map(comp => `- For a "${comp.name}" component, use componentKey: "${comp.key}"`).join('\n   ')}
 5. If no match is found, create a custom component wrapped in a card container for consistency.
 `;
 }
@@ -141,20 +141,24 @@ ${componentMatchingInstructions}
    - Choose either List Layout or Record Layout based on context:
      
      A) LIST LAYOUT (One Column) - Use when displaying collections/lists:
+        - Page Content: NO padding (padding: 0)
         - Page Header: Full-width component (componentKey: "2dbfb7fb9d0323bc25a2dadbcc3d68a0e9621088")
-        - Panel Container: Contains single main content frame for item lists
+        - Panel Container: NO padding (padding: 0) for full-width content
         - Components inside single column MUST NOT have width - they fill container
         - Include: filters, sort, charts, actions, "Display" menu
      
      B) RECORD LAYOUT (Two Column) - DEFAULT LAYOUT for single records:
+        - Page Content: NO padding (padding: 0)
         - Page Header: Full-width component (componentKey: "2dbfb7fb9d0323bc25a2dadbcc3d68a0e9621088")
+        - Panel Container: 24px padding around content
         - Panel Container: Contains main content area (2/3 space) + sidebar (1/3 space, minimum 400px)
         - Components inside BOTH areas MUST NOT have width - they fill container
         - Use for: single record detail with related data in sidebar
    
    ✅ SPLIT VIEW LAYOUT (when prompt requires master-detail or queue scenarios):
+   - Page Content: NO padding (padding: 0)
    - Page Header: Full-width component (componentKey: "2dbfb7fb9d0323bc25a2dadbcc3d68a0e9621088")
-   - Panel Container: Contains left panel (main content) + right panel (400px sidebar)
+   - Panel Container: 24px padding around content
    - Left Panel: Main content area that fills remaining space
    - Right Panel: Fixed 400px width sidebar for navigation/details
    - Use when: users need to navigate/edit multiple items without leaving screen
@@ -168,7 +172,9 @@ ${componentMatchingInstructions}
     - Components should use "fill container" behavior in ALL layouts
     - Let the parent frame dimensions handle the sizing automatically
     - Only specify width for the layout containers themselves (sidebars = 400px)
-    - Page content has 24px padding and 12px gap between panels
+    - Page content padding: Always 0 (padding handled by Panel Container)
+    - Panel container padding: 0 for LIST LAYOUT (one column), 24px for RECORD LAYOUT and SPLIT VIEW
+    - Panel container has 12px gap between panels
 
 3. Screen Generation Guidelines:
    - ALWAYS create multiple screens for a complete user flow
@@ -219,7 +225,7 @@ ${componentMatchingInstructions}
           "y": 112, // After header (64px) + navigation (48px)
           "direction": "vertical", // Always vertical to stack page header + panels
           "alignment": "start",
-          "padding": 24 // 24px padding around page content
+          "padding": 0 // Always 0 - padding is handled by Panel Container
         },
         "children": [
           // First child: Page Header (full width)
@@ -246,9 +252,10 @@ ${componentMatchingInstructions}
               "height": number,
               "direction": "horizontal", // Horizontal for left + right panels
               "alignment": "start",
-              "spacing": 12 // Gap between panels
+              "spacing": 12, // Gap between panels
+              "padding": 0 // For LIST LAYOUT (one column) use 0, for RECORD LAYOUT and SPLIT VIEW use 24
             },
-            "children": [Node[]] // Left panel and right panel go here
+            "children": [Node[]] // Left panel and right panel go here, for the components when no match found in the library(for the components with no component key), such components should be wrapped in card instead of frame
           }
         ]
       }
@@ -270,7 +277,7 @@ ${componentMatchingInstructions}
           "alignment": "start",
           "spacing": 16
         },
-        "children": [Node[]] // Children width should follow fill container, each child should be wrapped in card instead of frame
+        "children": [Node[]] // Children width should follow fill container, for the components when no match found in the library, such components should be wrapped in card instead of frame
       }
       
       // Right Panel (for split view layouts) - Sidebar  
@@ -288,13 +295,13 @@ ${componentMatchingInstructions}
           "alignment": "start",
           "spacing": 16
         },
-        "children": [Node[]] // Children width should follow fill container that is 400px, each child should be wrapped in card instead of frame
+        "children": [Node[]] // Children width should follow fill container, for the components when no match found in the library(for the components with no component key), such components should be wrapped in card instead of frame
       }
 
    a3) Record Layout Components:
       For Record Layout, the Panel Container contains:
       
-      // Main Content Area (takes 2/3 of available space)
+      // Main Content Area (takes remaining space)
       {
         "id": "main-content",
         "type": "frame",
@@ -628,8 +635,8 @@ ${componentMatchingInstructions}
    
    🔹 STEP 2: For STANDARD LAYOUT, choose content type:
    - Does the prompt involve displaying lists, collections, or multiple records?
-     → YES: Use LIST LAYOUT (one column)
-     → NO: Use RECORD LAYOUT (two column - default)
+     → YES: Use LIST LAYOUT (one column) - Panel Container padding: 0
+     → NO: Use RECORD LAYOUT (two column - default) - Panel Container padding: 24px
    
    🔹 STEP 3: Build the page structure:
    Every page MUST follow this exact hierarchy:
@@ -870,7 +877,7 @@ ${componentMatchingInstructions}
                "direction": "vertical", // Always vertical to stack page header + panels
                "alignment": "start",
                "spacing": 16, // Gap between page header and panels
-               "padding": 24 // 24px padding around page content
+               "padding": 0 // Always 0 - padding is handled by Panel Container
              },
              "children": [
                // First child: Page Header (full width)
@@ -894,7 +901,8 @@ ${componentMatchingInstructions}
                    "height": 700,
                    "direction": "horizontal", // Horizontal for left + right panels
                    "alignment": "start",
-                   "spacing": 12 // Gap between panels
+                   "spacing": 12, // Gap between panels
+                   "padding": 0 // For LIST LAYOUT (one column) use 0, for RECORD LAYOUT and SPLIT VIEW use 24
                  },
                  "children": [
                    // For Record Layout (two column):
