@@ -51,7 +51,7 @@ await fastify.register(import("@fastify/cors"), {
   origin: true,
 });
 
-// Function to format component list with keys and page names
+// Function to format component list with keys, page names, and descriptions
 function formatComponentList(components) {
   return components.map(component => {
     const pageName = component.containing_frame && component.containing_frame.pageName 
@@ -61,7 +61,8 @@ function formatComponentList(components) {
     return {
       key: component.key,
       name: component.name,
-      pageName: pageName
+      pageName: pageName,
+      description: component.description || 'No description available'
     };
   });
 }
@@ -71,14 +72,19 @@ function generateComponentMatchingInstructions(components) {
   return `
 Component Matching Instructions:
 1. For each component you create, check if there's a similar component in the available components list.
-2. Match components based on their names and types. For example:
+2. Match components based on their names, types, AND descriptions. For example:
    - If creating a "header", look for components with "header" in their name
    - If creating a "button", look for components with "button" in their name
    - If creating a "card", look for components with "card" in their name
-3. When a match is found, add the componentKey property to your component using the matched component's key.
-4. Example matches:
-   ${components.map(comp => `- For a "${comp.name}" component, use componentKey: "${comp.key}"`).join('\n   ')}
-5. If no match is found, create a custom component wrapped in a card container for consistency.
+   - READ the component descriptions to understand their actual purpose and functionality
+3. When a match is found, add the componentKey property DIRECTLY to your main component object (not to nested children) using the matched component's key.
+4. Available components with descriptions:
+   ${components.map(comp => `- "${comp.name}" (${comp.description}) - use componentKey: "${comp.key}"`).join('\n   ')}
+5. IMPORTANT: Use component descriptions to make accurate matches - don't just rely on names. A component's description reveals its true purpose.
+6. COMPONENT STRUCTURE RULES:
+   - If using a library component (componentKey found): Place componentKey at top level, children can be empty
+   - If creating custom component (no componentKey): Wrap in card container for consistency
+7. If no match is found, create a custom component wrapped in a card container for consistency.
 `;
 }
 
@@ -121,7 +127,9 @@ fastify.post("/command", async (request, reply) => {
     const schemaInstructions = `You are a UI/UX design expert creating high-quality, professional designs using given list of components. Follow these guidelines:
 
 1. Available Components:
-   The following components are available in the library.use any of these components if they are similar to the component you are creating, include their componentKey in the properties:
+   The following components are available in the library. Each component includes a name, description, and componentKey. 
+   CRITICAL: Read the descriptions carefully to understand each component's purpose and functionality before deciding to use it.
+   Use any of these components if they match your design needs, and include their componentKey in the properties:
    ${JSON.stringify(formattedComponents, null, 2)}
 
 ${componentMatchingInstructions}
@@ -189,13 +197,33 @@ ${componentMatchingInstructions}
      🚨 IMPORTANT SPACING RULE: Use spacing: 0 for top-level screens (no gaps between header, navigation, page content). Use spacing: 12-24px for layout containers (gaps between child components).
      
      🚨 IMPORTANT CUSTOM COMPONENT RULE: If a component is NOT found in the library (no componentKey), wrap it inside a card container for consistency. All custom components (text, button, input, etc.) must be placed within a card to ensure consistent structure and styling.
+   
+   🚨 CRITICAL COMPONENT KEY PLACEMENT: When using a library component (componentKey found), the componentKey MUST be placed directly on the main component object, NOT on a nested child. 
+   
+   ❌ WRONG - componentKey on nested child:
+   {
+     "type": "card",
+     "children": [
+       {
+         "componentKey": "abc123",  // WRONG - nested
+         "type": "frame"
+       }
+     ]
+   }
+   
+   ✅ CORRECT - componentKey on main component:
+   {
+     "type": "frame",
+     "componentKey": "abc123",  // CORRECT - at top level
+     "children": [...]
+   }
 
    a) Frame Component (for layout regions):
       {
         "id": "unique-id",
         "type": "frame",
         "name": "descriptive-name",
-        "componentKey": "string (if library component found)",
+        "componentKey": "string (if library component found - PLACE AT TOP LEVEL)",
         "properties": {
           "fill": { "r": 0.953, "g": 0.953, "b": 0.953 } // Use for layout containers
         },
@@ -208,6 +236,16 @@ ${componentMatchingInstructions}
           "padding": number // Use for page content frames (24px)
         },
         "children": [Node[]]
+      }
+      
+      🚨 EXAMPLE - Correct usage of library component:
+      {
+        "id": "contact-details",
+        "type": "frame", 
+        "name": "Contact Details",
+        "componentKey": "55f5895ef2ab7f321b57247c00b49a00a51d125f", // ✅ CORRECT - at top level
+        "layout": {"height": 300},
+        "children": [] // Children can be empty for library components
       }
 
    a1) Page Content Frame (use for main content areas):
@@ -255,7 +293,9 @@ ${componentMatchingInstructions}
               "spacing": 12, // Gap between panels
               "padding": 0 // For LIST LAYOUT (one column) use 0, for RECORD LAYOUT and SPLIT VIEW use 24
             },
-            "children": [Node[]] // Left panel and right panel go here, for the components when no match found in the library(for the components with no component key), such components should be wrapped in card instead of frame
+            "children": [Node[]] // Left panel and right panel go here
+            // FOR LIBRARY COMPONENTS: Use componentKey at top level of component, not nested
+            // FOR CUSTOM COMPONENTS: Wrap in card container for consistency
           }
         ]
       }
@@ -277,7 +317,9 @@ ${componentMatchingInstructions}
           "alignment": "start",
           "spacing": 16
         },
-        "children": [Node[]] // Children width should follow fill container, for the components when no match found in the library, such components should be wrapped in card instead of frame
+        "children": [Node[]] // Children width should follow fill container
+        // FOR LIBRARY COMPONENTS: Use componentKey at top level, children can be empty
+        // FOR CUSTOM COMPONENTS: Wrap in card container for consistency
       }
       
       // Right Panel (for split view layouts) - Sidebar  
@@ -295,7 +337,9 @@ ${componentMatchingInstructions}
           "alignment": "start",
           "spacing": 16
         },
-        "children": [Node[]] // Children width should follow fill container, for the components when no match found in the library(for the components with no component key), such components should be wrapped in card instead of frame
+        "children": [Node[]] // Children width should follow fill container
+        // FOR LIBRARY COMPONENTS: Use componentKey at top level, children can be empty  
+        // FOR CUSTOM COMPONENTS: Wrap in card container for consistency
       }
 
    a3) Record Layout Components:
@@ -315,7 +359,9 @@ ${componentMatchingInstructions}
           "alignment": "start", 
           "spacing": 24
         },
-        "children": [Node[]] // Children should NOT have width - will fill container, each child should be wrapped in card instead of frame
+        "children": [Node[]] // Children should NOT have width - will fill container
+        // FOR LIBRARY COMPONENTS: Use componentKey at top level, children can be empty
+        // FOR CUSTOM COMPONENTS: Wrap in card container for consistency
       }
       
       // Sidebar (takes 1/3 of available space)
@@ -333,7 +379,9 @@ ${componentMatchingInstructions}
           "alignment": "start",
           "spacing": 16
         },
-        "children": [Node[]] // Children should NOT have width - will fill container, each child should be wrapped in card instead of frame
+        "children": [Node[]] // Children should NOT have width - will fill container
+        // FOR LIBRARY COMPONENTS: Use componentKey at top level, children can be empty
+        // FOR CUSTOM COMPONENTS: Wrap in card container for consistency
       }
 
 
