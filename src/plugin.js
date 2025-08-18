@@ -3,57 +3,27 @@
 figma.showUI(__html__, { width: 450, height: 700 });
 let isGenerating = false;
 let shouldStop = false;
-// Add library configuration
-const LIBRARY_CONFIG = {
-    core: {
-        name: "Core Components",
-        fileKey: "RiY2reCmbX0Jyq7QAFL8SE", // Using same key for now as requested
-    },
-    web: {
-        name: "web Components",
-        fileKey: "uuzKZvAxmOWZSDuZjkAfmQ", // Using same key for now as requested
-    },
-    slds: {
-        name: "slds Components",
-        fileKey: "E1qeg6cS93K9Lm8c5AMSod", // Using same key for now as requested
-    }
-};
-let componentCache = {};
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds
-// Add a function to check if cache is valid
-function isCacheValid(timestamp) {
-    return Date.now() - timestamp < CACHE_DURATION;
-}
-// Add a function to clear expired cache entries
-function clearExpiredCache() {
-    const now = Date.now();
-    Object.keys(componentCache).forEach(key => {
-        if (!isCacheValid(componentCache[key].timestamp)) {
-            delete componentCache[key];
-        }
-    });
-}
+// Add this after the interfaces
+let availableComponents = [];
+let isSelectionMode = false;
+let selectedComponentNode = null;
+// Handle messages from the UI
 figma.ui.onmessage = async (msg) => {
+    console.log("Plugin: Received message from UI:", msg);
     if (msg.type === "generate") {
         if (isGenerating) {
             figma.notify("Already generating a design. Please wait or stop the current generation.", { error: true });
             return;
         }
-        // Always use all libraries
-        const libraryIds = ['core', 'slds', 'web'];
-        const selectedLibraryConfigs = libraryIds.map(id => LIBRARY_CONFIG[id]).filter(Boolean);
-        if (!selectedLibraryConfigs.length) {
-            figma.notify("Error: No valid libraries found", { error: true });
-            figma.ui.postMessage({ type: "complete", success: false });
-            return;
-        }
         isGenerating = true;
         shouldStop = false;
         try {
-            await renderComponents(msg.prompt, libraryIds);
+            await generateDesign(msg.prompt);
         }
         catch (error) {
             console.error('Generation failed:', error);
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+            figma.notify("Failed to generate design: " + errorMessage, { error: true });
         }
         finally {
             isGenerating = false;
@@ -65,578 +35,1572 @@ figma.ui.onmessage = async (msg) => {
             shouldStop = true;
             isGenerating = false;
             figma.notify("Generation stopped");
-            figma.ui.postMessage({ type: "complete", success: false });
         }
     }
-    else if (msg.type === "clearCache") {
-        clearComponentCache();
-        figma.notify("Component cache cleared");
-        figma.ui.postMessage({ type: "cacheCleared" });
+    else if (msg.type === "enterSelectionMode") {
+        console.log("Plugin: Entering selection mode");
+        isSelectionMode = true;
+        figma.notify("🎯 Selection mode activated. Click on any component to select it for enhancement.");
+    }
+    else if (msg.type === "exitSelectionMode") {
+        console.log("Plugin: Exiting selection mode");
+        isSelectionMode = false;
+        selectedComponentNode = null;
+        figma.notify("Selection mode deactivated.");
+    }
+    else if (msg.type === "enhanceComponent") {
+        console.log("Plugin: Handling enhanceComponent message", {
+            hasSelectedNode: !!selectedComponentNode,
+            componentId: msg.componentId,
+            prompt: msg.prompt
+        });
+        if (selectedComponentNode && msg.componentId && msg.prompt) {
+            console.log("Plugin: Calling enhanceComponent function");
+            await enhanceComponent(selectedComponentNode, msg.prompt);
+        }
+        else {
+            console.log("Plugin: Missing required data for enhancement", {
+                selectedComponentNode: !!selectedComponentNode,
+                componentId: msg.componentId,
+                prompt: msg.prompt
+            });
+        }
+    }
+    else if (msg.type === "replaceComponent") {
+        console.log("Plugin: Handling replaceComponent message", {
+            hasSelectedNode: !!selectedComponentNode,
+            componentId: msg.componentId,
+            replaceWith: msg.replaceWith
+        });
+        if (selectedComponentNode && msg.componentId && msg.replaceWith) {
+            console.log("Plugin: Calling replaceComponent function");
+            await replaceComponent(selectedComponentNode, msg.replaceWith);
+        }
+        else {
+            console.log("Plugin: Missing required data for replacement", {
+                selectedComponentNode: !!selectedComponentNode,
+                componentId: msg.componentId,
+                replaceWith: msg.replaceWith
+            });
+        }
     }
 };
-async function getLLMResponse(availableComponents, userPrompt, libraryConfig) {
-    const availablePageNames = [
-        ...new Set(availableComponents.map((comp) => ({
-            type: comp.containing_frame.name,
-            variant: comp.name,
-            key: comp.key
-        }))),
-    ];
-    // Group components by type for better variant selection
-    const componentGroups = availablePageNames.reduce((acc, comp) => {
-        if (!acc[comp.type]) {
-            acc[comp.type] = [];
-        }
-        acc[comp.type].push(comp.variant);
-        return acc;
-    }, {});
+// Add selection change handler for component selection
+figma.on("selectionchange", () => {
+    console.log("Plugin: Selection changed", {
+        isSelectionMode,
+        selectionLength: figma.currentPage.selection.length,
+        selection: figma.currentPage.selection.map(s => ({ id: s.id, name: s.name, type: s.type }))
+    });
+    if (isSelectionMode && figma.currentPage.selection.length === 1) {
+        const selected = figma.currentPage.selection[0];
+        selectedComponentNode = selected;
+        console.log("Plugin: Component selected for enhancement", {
+            id: selected.id,
+            name: selected.name,
+            type: selected.type
+        });
+        // Send component selection to UI
+        const message = {
+            type: "componentSelected",
+            componentId: selected.id,
+            componentName: selected.name || selected.type,
+        };
+        console.log("Plugin: Sending component selection to UI", message);
+        figma.ui.postMessage(message);
+    }
+});
+// Main function to generate design
+async function generateDesign(prompt) {
     try {
-        console.log("Sending request to local server...");
+        reportProgress('analyzing', 'Analyzing your prompt...');
+        // Get design data from the server
+        const designData = await getDesignData(prompt);
+        if (!designData || !Array.isArray(designData.screens)) {
+            throw new Error("Invalid design data received");
+        }
+        // Clear existing content on the current page
+        const currentPage = figma.currentPage;
+        currentPage.children.forEach(child => child.remove());
+        // Process each screen
+        for (const screen of designData.screens) {
+            if (shouldStop) {
+                throw new Error('Generation stopped');
+            }
+            reportProgress('rendering', `Rendering screen: ${screen.name || screen.id}`);
+            // Ensure screen has proper layout
+            if (!screen.layout) {
+                screen.layout = {
+                    width: 1440,
+                    height: 900,
+                    x: 0,
+                    y: 0
+                };
+            }
+            // Ensure screen has proper dimensions
+            screen.layout.width = 1440;
+            screen.layout.height = Math.max(900, screen.layout.height || 900);
+            // Pass isTopLevel=true for screens
+            const screenNode = await renderNode(screen, true);
+            // Position the screen
+            if (screen.layout.x !== undefined) {
+                screenNode.x = screen.layout.x;
+            }
+            if (screen.layout.y !== undefined) {
+                screenNode.y = screen.layout.y;
+            }
+            currentPage.appendChild(screenNode);
+        }
+        // Zoom to fit all screens
+        const bounds = currentPage.children.reduce((acc, node) => {
+            return {
+                x: Math.min(acc.x, node.x),
+                y: Math.min(acc.y, node.y),
+                width: Math.max(acc.width, node.x + node.width),
+                height: Math.max(acc.height, node.y + node.height)
+            };
+        }, { x: Infinity, y: Infinity, width: -Infinity, height: -Infinity });
+        // Create a rectangle node to represent the bounds
+        const boundsRect = figma.createRectangle();
+        boundsRect.x = bounds.x;
+        boundsRect.y = bounds.y;
+        boundsRect.resize(bounds.width, bounds.height);
+        figma.viewport.scrollAndZoomIntoView([boundsRect]);
+        boundsRect.remove();
+        figma.notify("Design generated successfully!");
+        figma.ui.postMessage({ type: "complete", success: true });
+    }
+    catch (error) {
+        console.error("Error in generateDesign:", error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+        figma.notify("Error generating design: " + errorMessage, { error: true });
+        figma.ui.postMessage({ type: "complete", success: false });
+    }
+}
+// Function to get design data from server
+async function getDesignData(prompt) {
+    try {
+        // First, fetch available components
+        const componentsResponse = await fetch("http://localhost:3000/components");
+        if (!componentsResponse.ok) {
+            throw new Error(`Failed to fetch components: ${componentsResponse.status}`);
+        }
+        const componentsData = await componentsResponse.json();
+        // Store components in the module-level variable
+        availableComponents = componentsData.components || [];
+        console.log("Available components:", availableComponents);
+        // Then send the design request with available components and layout instructions
         const response = await fetch("http://localhost:3000/command", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                "Accept": "application/json"
+                Accept: "application/json",
             },
             body: JSON.stringify({
-                prompt: userPrompt,
-                libraryId: libraryConfig.name,
-                systemPrompt: `You are a UI/UX design expert creating high-quality, professional designs with exceptional customer experience using the ${libraryConfig.name} library. Follow these guidelines:
-
-1. Design Focus (PRIMARY REQUIREMENT):
-   - Generate desktop-first designs by default
-   - Target desktop screen sizes (width >= 1024px)
-   - Use desktop-optimized layouts and components
-   - Consider mobile responsiveness as a secondary requirement
-
-2. Global Header Requirements (MUST BE INCLUDED IN EVERY PAGE):
-   - Every screen MUST include a global header at the top
-   - Header must be the first component in the layout
-   - Header must span the full width of the screen
-   - Header must be visible at all times (sticky positioning)
-
-   Desktop Header Types (Primary Focus):
-   * Choose from these header types based on context:
-     - Navigation Header (for main pages):
-       - Logo/App name on left
-       - Primary navigation in center
-       - User actions on right
-       - Height: 64px
-     - Content Header (for detail pages):
-       - Back button on left
-       - Page title in center
-       - Action buttons on right
-       - Height: 56px
-     - Dashboard Header (for analytics/dashboards):
-       - Section title on left
-       - Date/filter controls in center
-       - Export/settings on right
-       - Height: 72px
-     - Minimal Header (for focused tasks):
-       - Small logo on left
-       - Progress indicator in center
-       - Close/save on right
-       - Height: 48px
-
-   Mobile Considerations (Secondary):
-   * For mobile screens (width < 768px):
-     - Adapt desktop header to vertical layout
-     - Stack navigation items vertically
-     - Use hamburger menu for additional options
-     - Ensure touch targets are at least 44x44px
-
-3. Layout Structure:
-   - Header MUST be the first component
-   - Content area must start below the header
-   - Account for header height in content layout (add 64px top margin to main content)
-   - Ensure proper spacing between header and content
-   - Maintain consistent padding and margins
-   - Use desktop-optimized grid layouts
-   - Consider multi-column layouts where appropriate
-
-4. Component Variant Selection Guidelines:
-   - Choose variants based on component purpose and context:
-     * Buttons:
-       - Use "Primary" for main actions (submit, save, confirm)
-       - Use "Secondary" for alternative actions (cancel, back)
-       - Use "Error" only for destructive actions (delete, remove)
-       - Use "Success" for completed actions
-       - Use "Disabled" for unavailable actions
-     * Input Fields:
-       - Use "Default" for normal input
-       - Use "Error" only when validation fails
-       - Use "Success" when validation passes
-       - Use "Disabled" for read-only fields
-     * Navigation:
-       - Use "Active" for current page/selection
-       - Use "Hover" for interactive states
-       - Use "Default" for normal state
-     * Alerts/Notifications:
-       - Use "Error" for critical issues
-       - Use "Warning" for important notices
-       - Use "Success" for positive feedback
-       - Use "Info" for general information
-   - Available components and their variants:
-   ${Object.entries(componentGroups)
-                    .map(([type, variants]) => `- ${type}:\n${variants.map(v => `  * ${v}`).join('\n')}`)
-                    .join('\n')}
-
-5. User-Centric Design Principles:
-   - Design for clarity and ease of use
-   - Ensure intuitive navigation and flow
-   - Create clear visual hierarchies
-   - Use consistent patterns and behaviors
-   - Provide clear feedback for user actions
-   - Minimize cognitive load
-   - Follow Fitts's Law for interactive elements
-   - Ensure touch targets are at least 44x44px
-   - Maintain proper contrast ratios for readability
-
-6. Component Selection and Usage:
-   - Use ONLY these available components and their variants
-   - Choose components that best match the user's mental model
-   - Ensure components are used consistently throughout the design
-   - For text content, use the type "Textarea" with appropriate sizing
-
-7. Layout and Spacing:
-   - Use consistent spacing (8px, 16px, 24px, 32px)
-   - Maintain proper alignment and grid structure
-   - Group related elements together
-   - Provide adequate white space
-   - Ensure proper content density
-   - Use responsive design principles
-   - Consider mobile-first approach
-   - Account for header height in content layout (add 64px top margin to main content)
-
-8. Visual Design:
-   - Create clear visual hierarchy
-   - Use appropriate typography scale
-   - Ensure text is readable (minimum 16px for body text)
-   - Maintain proper contrast ratios
-   - Use color purposefully and consistently
-   - Provide visual feedback for interactive elements
-   - Use icons and imagery appropriately
-
-9. Accessibility and Inclusivity:
-   - Ensure sufficient color contrast
-   - Provide text alternatives for non-text content
-   - Design for keyboard navigation
-   - Consider users with different abilities
-   - Use semantic HTML structure
-   - Provide clear focus states
-   - Support screen readers
-
-10. Interaction Design:
-   - Make interactive elements obvious
-   - Provide clear affordances
-   - Use appropriate hover and active states
-   - Ensure consistent interaction patterns
-   - Provide immediate feedback for actions
-   - Prevent and handle errors gracefully
-   - Support common user workflows
-
-11. Content Strategy:
-   - Use clear, concise language
-   - Write meaningful labels and instructions
-   - Provide helpful error messages
-   - Use progressive disclosure for complex information
-   - Maintain consistent terminology
-   - Consider localization needs
-
-Return a well-structured design that follows these principles and provides an exceptional user experience. Each design MUST include the global header as specified above, and component variants MUST be chosen according to their intended purpose and context.`,
+                prompt,
+                systemPrompt: `You are a UI/UX design expert creating high-quality, professional designs using primitive components. 
+        When creating a two-column layout:
+        - The main content area must be exactly 900px wide
+        - The sidebar must be exactly 400px wide
+        - The sidebar should be used for widgets like Activity, Timeline, Alerts, etc.
+        - Maintain 32px spacing between columns
+        Every design must include a header component at the top of the page, followed by navigation, then page content following the specified layout structure.`,
+                availableComponents
             }),
         });
         if (!response.ok) {
             const errorText = await response.text();
-            console.error("Server response error:", {
-                status: response.status,
-                statusText: response.statusText,
-                errorText
-            });
-            throw new Error(`HTTP error! Status: ${response.status} - ${response.statusText}\n${errorText}`);
+            throw new Error(`Server error: ${response.status} - ${errorText}`);
         }
         const data = await response.json();
-        console.log("Successfully received design from AI:", data);
+        console.log("AI response:", data);
+        if (!isDesign(data)) {
+            throw new Error('Invalid design data received from server');
+        }
         return data;
     }
     catch (error) {
-        console.error("Error fetching design from AI:", error);
-        figma.notify("Error connecting to the design server. Please ensure the server is running at http://localhost:3000", { error: true });
-        return null;
+        console.error("Error in getDesignData:", error);
+        const errorMessage = error instanceof Error ? error.message : 'Failed to get design data from server';
+        throw new Error(errorMessage);
     }
 }
-// Fetch components from all selected libraries with caching
-async function getFigmaComponentsByIds(libraryIds) {
-    const fileKeys = libraryIds
-        .map(id => {
-        const config = LIBRARY_CONFIG[id];
-        return config && config.fileKey;
-    })
-        .filter(Boolean)
-        .join(',');
-    if (!fileKeys) {
-        console.error('No valid fileKeys found for selected libraries:', libraryIds);
-        return [];
-    }
-    // Clear expired cache entries
-    clearExpiredCache();
-    // Check cache
-    if (componentCache[fileKeys] && isCacheValid(componentCache[fileKeys].timestamp)) {
-        console.log('Using cached components for:', fileKeys);
-        return componentCache[fileKeys].components;
-    }
-    try {
-        reportProgress('fetching', 'Fetching components from Figma...');
-        const response = await fetch(`http://localhost:3000/components?fileKeys=${fileKeys}`, {
-            method: "GET",
-            headers: { "Accept": "application/json" }
-        });
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`HTTP error! Status: ${response.status} - ${response.statusText}\n${errorText}`);
-        }
-        const components = await response.json();
-        // Store in cache with timestamp
-        componentCache[fileKeys] = {
-            components,
-            timestamp: Date.now()
-        };
-        return components;
-    }
-    catch (error) {
-        console.error("Error fetching Figma components:", error);
-        return [];
-    }
+// Type guard for Design
+function isDesign(data) {
+    return (typeof data === 'object' &&
+        data !== null &&
+        'screens' in data &&
+        Array.isArray(data.screens));
 }
-function findMatchingComponent(components, type, variant) {
-    const normalizedType = type.toLowerCase().trim();
-    const normalizedVariant = variant ? variant.toLowerCase().trim() : undefined;
-    // Try exact match
-    let match = components.find(comp => {
-        const compType = (comp.containing_frame && (comp.containing_frame.name || comp.containing_frame.pageName) || '').toLowerCase().trim();
-        const compVariant = (comp.name || '').toLowerCase().trim();
-        return compType === normalizedType && (!normalizedVariant || compVariant === normalizedVariant);
+// Add this function after the interfaces
+function findMatchingComponentKey(type, availableComponents) {
+    // Skip matching for text type
+    if (type === 'text') {
+        return undefined;
+    }
+    // Convert type to lowercase and remove special characters for case-insensitive matching
+    const typeLower = type.toLowerCase().replace(/[^a-z0-9]/g, '');
+    // First try to find an exact match by ID
+    const exactMatch = availableComponents.find(comp => {
+        if (!comp || !comp.name)
+            return false;
+        const compId = comp.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+        // Check if the component ID matches the type
+        return compId === typeLower;
     });
-    // Try fuzzy match if no exact match
-    if (!match) {
-        match = components.find(comp => {
-            const compType = (comp.containing_frame && (comp.containing_frame.name || comp.containing_frame.pageName) || '').toLowerCase().trim();
-            const compVariant = (comp.name || '').toLowerCase().trim();
-            return compType.includes(normalizedType) && (!normalizedVariant || compVariant.includes(normalizedVariant));
-        });
+    if (exactMatch && exactMatch.key) {
+        console.log(`Found exact match for ${type} with ID ${exactMatch.name}: ${exactMatch.key}`);
+        return exactMatch.key;
     }
-    return match;
-}
-function getErrorMessage(error) {
-    if (error instanceof Error) {
-        return error.message;
+    // If no exact match found, look for partial match by ID
+    const partialMatch = availableComponents.find(comp => {
+        if (!comp || !comp.name)
+            return false;
+        const compId = comp.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+        return compId.includes(typeLower);
+    });
+    if (partialMatch && partialMatch.key) {
+        console.log(`Found partial match for ${type} with ID ${partialMatch.name}: ${partialMatch.key}`);
+        return partialMatch.key;
     }
-    return String(error);
+    return undefined;
 }
-function safelyResizeNode(node, width, height) {
-    const currentWidth = "width" in node ? node.width : 100;
-    const currentHeight = "height" in node ? node.height : 40;
-    // Ensure minimum dimensions for usability
-    const minWidth = 40;
-    const minHeight = 40;
-    const newWidth = width && width > minWidth ? width : Math.max(currentWidth, minWidth);
-    const newHeight = height && height > minHeight ? height : Math.max(currentHeight, minHeight);
-    if (newWidth > 0 && newHeight > 0 && "resize" in node) {
-        node.resize(newWidth, newHeight);
-    }
-}
-// Add new function for text overflow handling
-function handleTextOverflow(node, maxWidth) {
-    if (node.width > maxWidth) {
-        // Enable text auto-resize
-        node.textAutoResize = "HEIGHT";
-        // Set maximum width
-        node.resize(maxWidth, node.height);
-    }
-}
-// Add function to handle text length restrictions
-function restrictTextLength(text, maxLength = 15) {
-    return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
-}
-// Modify the applyConsistentSpacing function
-function applyConsistentSpacing(container, children) {
-    const spacing = 16; // Base spacing unit
-    const padding = 24; // Container padding
-    const minHeight = 600; // Minimum container height
-    let currentY = padding;
-    let currentX = padding;
-    let maxRowHeight = 0;
-    let rowStartIndex = 0;
-    // First pass: handle text overflow and calculate actual dimensions
-    for (const child of children) {
-        if (child.type === "TEXT") {
-            const maxTextWidth = container.width - (padding * 2);
-            handleTextOverflow(child, maxTextWidth);
-        }
-    }
-    // Second pass: position components
-    for (let i = 0; i < children.length; i++) {
-        const child = children[i];
-        // Check if child would overflow container width
-        if (currentX + child.width > container.width - padding) {
-            // Start new row
-            currentX = padding;
-            currentY += maxRowHeight + spacing;
-            maxRowHeight = 0;
-            rowStartIndex = i;
-        }
-        // Position child
-        child.x = currentX;
-        child.y = currentY;
-        // Update tracking variables
-        currentX += child.width + spacing;
-        maxRowHeight = Math.max(maxRowHeight, child.height);
-        // If this is the last child in the row, ensure proper spacing
-        if (i === children.length - 1 ||
-            (i < children.length - 1 &&
-                currentX + children[i + 1].width > container.width - padding)) {
-            // Add extra spacing after the last element in the row
-            currentX = padding;
-            currentY += maxRowHeight + spacing;
-            maxRowHeight = 0;
-        }
-    }
-    // Update container height to fit all content with padding, but not less than minHeight
-    const totalHeight = Math.max(currentY + maxRowHeight + padding, minHeight);
-    container.resize(container.width, totalHeight);
-}
-async function renderComponents(userPrompt, libraryIds) {
+// Add this function after the interfaces
+async function loadRequiredFonts() {
     try {
-        reportProgress('analyzing', 'Analyzing your prompt...');
-        const components = await getFigmaComponentsByIds(libraryIds);
-        if (!components || components.length === 0) {
-            figma.notify(`No components found in the selected libraries`, { error: true });
-            figma.ui.postMessage({ type: "complete", success: false });
-            return;
-        }
-        // Check if stopped
-        if (shouldStop) {
-            throw new Error('Generation stopped');
-        }
-        console.log(`Available components in selected libraries:`, components);
-        // Use the first selected library for system prompt context, or default to 'core'
-        const firstLibraryId = libraryIds[0] || 'core';
-        reportProgress('generating', 'Generating design...');
-        const designData = await getLLMResponse(components, userPrompt, LIBRARY_CONFIG[firstLibraryId]);
-        // Check if stopped
-        if (shouldStop) {
-            throw new Error('Generation stopped');
-        }
-        if (!designData || !Array.isArray(designData.screens)) {
-            figma.notify("Failed to get valid design data from LLM", { error: true });
-            figma.ui.postMessage({ type: "complete", success: false });
-            return;
-        }
-        // Send preview message to UI
-        const previewText = `I'll create ${designData.screens.length} screen${designData.screens.length > 1 ? 's' : ''}:\n\n` +
-            designData.screens.map((screen) => {
-                const screenName = screen.name || screen.id;
-                const width = (screen.layout && screen.layout.width) || 1200;
-                const componentCount = (screen.children && screen.children.length) || 0;
-                const components = screen.children ? screen.children.map(child => `  - ${child.type}${child.variant ? ` (${child.variant})` : ''}`).join('\n') : '';
-                return `📱 ${screenName}\n` +
-                    `   Components: ${componentCount}\n` +
-                    (components ? `   Components List:\n${components}` : '');
-            }).join('\n\n');
-        figma.ui.postMessage({
-            type: "preview",
-            preview: previewText
-        });
-        const successfulComponents = [];
-        const failedComponents = [];
-        for (const screen of designData.screens) {
-            // Check if stopped
-            if (shouldStop) {
-                throw new Error('Generation stopped');
-            }
-            const container = figma.createFrame();
-            container.name = screen.name || screen.id || "Generated Screen";
-            // Set default container width if not specified
-            let width = 1200;
-            let x = 0;
-            let y = 0;
-            if (screen.layout) {
-                if (typeof screen.layout.width === 'number')
-                    width = screen.layout.width;
-                if (typeof screen.layout.x === 'number')
-                    x = screen.layout.x;
-                if (typeof screen.layout.y === 'number')
-                    y = screen.layout.y;
-            }
-            // Set initial height to minimum height
-            container.resize(width, 600); // Minimum height
-            container.x = x;
-            container.y = y;
-            // Set background color
-            container.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
-            // Load fonts at the start
-            await figma.loadFontAsync({ family: "Inter", style: "Regular" });
-            await figma.loadFontAsync({ family: "Segoe UI", style: "Regular" });
-            const renderedChildren = [];
-            const children = screen.children || [];
-            for (const child of children) {
-                if (!child.type) {
-                    console.warn(`Skipping component missing type:`, child);
-                    continue;
-                }
-                try {
-                    const matchingComponent = findMatchingComponent(components, child.type, child.variant);
-                    if (!matchingComponent) {
-                        failedComponents.push(`${child.type}${child.variant ? ` (${child.variant})` : ''}`);
-                        continue;
-                    }
-                    if (matchingComponent.isText) {
-                        // Handle text component
-                        if (!child.properties || typeof child.properties.text !== 'string') {
-                            console.warn(`Text component missing text property:`, child);
-                            failedComponents.push(`${child.type}`);
-                            continue;
-                        }
-                        const textNode = figma.createText();
-                        textNode.fontName = { family: "Inter", style: "Regular" };
-                        // Apply text length restrictions based on component type
-                        let textContent = child.properties.text;
-                        if (child.type.toLowerCase().includes('button') ||
-                            child.type.toLowerCase().includes('header')) {
-                            textContent = restrictTextLength(textContent);
-                        }
-                        textNode.characters = textContent;
-                        // Set text properties
-                        if (child.properties.fontSize) {
-                            textNode.fontSize = child.properties.fontSize;
-                        }
-                        if (child.properties.textAlign) {
-                            textNode.textAlignHorizontal = child.properties.textAlign;
-                        }
-                        // Enable text auto-resize
-                        textNode.textAutoResize = "HEIGHT";
-                        // Set initial width based on layout or container
-                        const maxTextWidth = container.width - 48;
-                        const initialWidth = child.layout && typeof child.layout.width === 'number'
-                            ? Math.min(child.layout.width, maxTextWidth)
-                            : maxTextWidth;
-                        textNode.resize(initialWidth, textNode.height);
-                        container.appendChild(textNode);
-                        renderedChildren.push(textNode);
-                        successfulComponents.push(`${child.type}`);
-                        continue;
-                    }
-                    if (!matchingComponent.key) {
-                        console.error(`Component missing key: ${child.type}${child.variant ? ` (${child.variant})` : ''}`);
-                        failedComponents.push(`${child.type}${child.variant ? ` (${child.variant})` : ''}`);
-                        continue;
-                    }
-                    try {
-                        const component = await figma.importComponentByKeyAsync(matchingComponent.key);
-                        const instance = component.createInstance();
-                        instance.name = child.id || `${child.type}${child.variant ? ` (${child.variant})` : ''}`;
-                        // Handle variant properties more carefully
-                        if (child.variant) {
-                            try {
-                                const mainComponent = await instance.getMainComponentAsync();
-                                if (mainComponent && mainComponent.children) {
-                                    const figmaVariant = child.variant.replace('State=', '');
-                                    const matchingVariant = mainComponent.children.find((child) => child.name === figmaVariant);
-                                    if (matchingVariant) {
-                                        instance.mainComponent = matchingVariant;
-                                    }
-                                }
-                            }
-                            catch (variantError) {
-                                console.warn(`Could not set variant ${child.variant} for ${child.type}:`, variantError);
-                            }
-                        }
-                        // Set layout
-                        if (child.layout) {
-                            if (typeof child.layout.x === 'number')
-                                instance.x = child.layout.x;
-                            if (typeof child.layout.y === 'number')
-                                instance.y = child.layout.y;
-                            if (typeof child.layout.width === 'number' && typeof child.layout.height === 'number') {
-                                safelyResizeNode(instance, child.layout.width, child.layout.height);
-                            }
-                        }
-                        // Handle component properties
-                        if (child.properties) {
-                            if (typeof child.properties.text === "string") {
-                                const textNodes = instance.findAll((node) => node.type === "TEXT");
-                                for (const node of textNodes) {
-                                    const textNode = node;
-                                    await figma.loadFontAsync(textNode.fontName);
-                                    textNode.characters = child.properties.text;
-                                }
-                            }
-                            // Handle other properties like colors, states, etc.
-                            if (child.properties.fill) {
-                                const fills = instance.findAll((node) => "fills" in node);
-                                for (const node of fills) {
-                                    node.fills = [{ type: 'SOLID', color: child.properties.fill }];
-                                }
-                            }
-                        }
-                        container.appendChild(instance);
-                        renderedChildren.push(instance);
-                        successfulComponents.push(`${child.type}${child.variant ? ` (${child.variant})` : ''}`);
-                    }
-                    catch (error) {
-                        console.error(`Error rendering ${child.type}${child.variant ? ` (${child.variant})` : ''}:`, error);
-                        failedComponents.push(`${child.type}${child.variant ? ` (${child.variant})` : ''}`);
-                    }
-                }
-                catch (error) {
-                    console.error(`Error rendering ${child.type}${child.variant ? ` (${child.variant})` : ''}:`, error);
-                    failedComponents.push(`${child.type}${child.variant ? ` (${child.variant})` : ''}`);
-                }
-            }
-            // Apply consistent spacing to all rendered children
-            applyConsistentSpacing(container, renderedChildren);
-            figma.currentPage.appendChild(container);
-        }
-        if (failedComponents.length === 0) {
-            figma.notify("Successfully generated all components!");
-        }
-        else {
-            figma.notify(`Generated ${successfulComponents.length} components. Failed: ${[
-                ...new Set(failedComponents),
-            ].join(", ")}`);
-        }
-        figma.ui.postMessage({
-            type: "complete",
-            success: true,
-            stats: {
-                successful: successfulComponents.length,
-                failed: failedComponents.length,
-            },
-        });
+        await figma.loadFontAsync({ family: "SF Pro", style: "Regular" });
+        await figma.loadFontAsync({ family: "SF Pro", style: "Bold" });
+        await figma.loadFontAsync({ family: "Inter", style: "Regular" });
+        await figma.loadFontAsync({ family: "Inter", style: "Bold" });
+        console.log("Required fonts loaded successfully");
     }
     catch (error) {
-        if (error instanceof Error && error.message === 'Generation stopped') {
-            console.log('Generation was stopped by user');
-        }
-        else {
-            console.error("Error in renderComponents:", error);
-            figma.notify("Error generating design: " + getErrorMessage(error), {
-                error: true,
-            });
-        }
-        figma.ui.postMessage({ type: "complete", success: false });
+        console.error("Error loading fonts:", error);
     }
 }
-// Add a function to clear the cache
-function clearComponentCache() {
-    componentCache = {};
-    console.log('Component cache cleared.');
+// Update the renderNode function to add componentKey
+async function renderNode(data, isTopLevel = false) {
+    if (!data || typeof data !== 'object') {
+        throw new Error('Invalid node data');
+    }
+    // Convert container type to frame
+    if (data.type === 'container') {
+        console.log(`Converting container type to frame for node: ${data.id}`);
+        data.type = 'frame';
+    }
+    console.log(`[renderNode] Rendering node:`, {
+        id: data.id,
+        type: data.type,
+        hasChildren: data.children && data.children.length > 0,
+        componentKey: data.componentKey,
+        isTopLevel,
+        text: data.text
+    });
+    let node;
+    // First check if componentKey is directly provided in the data
+    if (data.componentKey) {
+        console.log(`Using provided componentKey: ${data.componentKey}`);
+        try {
+            // Load required fonts before importing component
+            await loadRequiredFonts();
+            // Try to instantiate the component from the library
+            const component = await figma.importComponentByKeyAsync(data.componentKey);
+            if (component) {
+                console.log(`Successfully imported component with key: ${data.componentKey}`);
+                node = component.createInstance();
+                // Set the name if provided
+                if (data.name) {
+                    node.name = data.name;
+                }
+                // Apply layout if provided
+                if (data.layout) {
+                    await applyLayout(node, data.layout);
+                }
+                // If we have AI-generated text, update the component text
+                if (data.text && node.type === 'INSTANCE') {
+                    console.log('Updating component text with:', data.text);
+                    await updateComponentText(node, data.text);
+                }
+                return node;
+            }
+        }
+        catch (error) {
+            console.error(`Failed to import component with key ${data.componentKey}:`, error);
+            // Fall back to regular rendering if component import fails
+        }
+    }
+    // If no componentKey provided or import failed, try to find matching component
+    const componentKey = findMatchingComponentKey(data.type, availableComponents);
+    if (componentKey) {
+        console.log(`Found matching component key for ${data.type}: ${componentKey}`);
+        try {
+            // Load required fonts before importing component
+            await loadRequiredFonts();
+            // Try to instantiate the component from the library
+            const component = await figma.importComponentByKeyAsync(componentKey);
+            if (component) {
+                console.log(`Successfully imported component: ${componentKey}`);
+                node = component.createInstance();
+                // Set the name if provided
+                if (data.name) {
+                    node.name = data.name;
+                }
+                // Apply layout if provided
+                if (data.layout) {
+                    await applyLayout(node, data.layout);
+                }
+                // If we have AI-generated text, update the component text
+                if (data.text && node.type === 'INSTANCE') {
+                    console.log('Updating component text with:', data.text);
+                    await updateComponentText(node, data.text);
+                }
+                return node;
+            }
+        }
+        catch (error) {
+            console.error(`Failed to import component ${componentKey}:`, error);
+            // Fall back to regular rendering if component import fails
+        }
+    }
+    // Create the appropriate node type if no component key or import failed
+    switch (data.type) {
+        case 'frame':
+            node = await renderFrame(data, isTopLevel);
+            break;
+        case 'text':
+            await loadRequiredFonts();
+            node = await renderText(data);
+            break;
+        case 'rectangle':
+            node = await renderRectangle(data);
+            break;
+        case 'line':
+            node = await renderLine(data);
+            break;
+        case 'image':
+            node = await renderImage(data);
+            break;
+        case 'button':
+            await loadRequiredFonts();
+            node = await renderButton(data);
+            break;
+        case 'card':
+            node = await renderCard(data);
+            break;
+        case 'input':
+            await loadRequiredFonts();
+            node = await renderInput(data);
+            break;
+        case 'tab':
+            await loadRequiredFonts();
+            node = await renderTab(data);
+            break;
+        case 'divider':
+            node = await renderDivider(data);
+            break;
+        case 'list':
+            await loadRequiredFonts();
+            node = await renderList(data);
+            break;
+        case 'table':
+            await loadRequiredFonts();
+            node = await renderTable(data);
+            break;
+        case 'header':
+            node = await renderHeader(data);
+            break;
+        case 'navigation':
+            await loadRequiredFonts();
+            node = await renderNavigation(data);
+            break;
+        case 'file-selector':
+            await loadRequiredFonts();
+            node = await renderFileSelector(data);
+            break;
+        default:
+            throw new Error(`Unsupported node type: ${data.type}`);
+    }
+    // Set node name
+    if (data.name) {
+        node.name = data.name;
+    }
+    // Apply layout
+    if (data.layout) {
+        await applyLayout(node, data.layout);
+    }
+    // Only render children for frame type nodes
+    if (data.type === 'frame' && data.children && node.type === 'FRAME') {
+        const frameNode = node;
+        for (const child of data.children) {
+            try {
+                const childNode = await renderNode(child, false); // Always pass false for children
+                frameNode.appendChild(childNode);
+            }
+            catch (error) {
+                console.error('Error rendering child node:', error);
+            }
+        }
+    }
+    return node;
 }
-// Add a function to report progress
+// Function to apply layout to a node
+async function applyLayout(node, layout) {
+    if ('resize' in node && layout.width !== undefined && layout.height !== undefined) {
+        node.resize(layout.width, layout.height);
+    }
+    if (layout.x !== undefined) {
+        node.x = layout.x;
+    }
+    if (layout.y !== undefined) {
+        node.y = layout.y;
+    }
+    if (node.type === 'FRAME') {
+        const frame = node;
+        // Set layout mode and alignment
+        if (layout.direction) {
+            frame.layoutMode = layout.direction.toUpperCase();
+        }
+        if (layout.alignment) {
+            const alignmentMap = {
+                'start': 'MIN',
+                'center': 'CENTER',
+                'end': 'MAX',
+                'space-between': 'SPACE_BETWEEN'
+            };
+            const alignment = alignmentMap[layout.alignment.toLowerCase()] || 'MIN';
+            frame.primaryAxisAlignItems = alignment;
+        }
+        // Apply spacing and padding
+        if (layout.spacing !== undefined) {
+            frame.itemSpacing = layout.spacing;
+        }
+        if (layout.padding !== undefined) {
+            frame.paddingLeft = layout.padding;
+            frame.paddingRight = layout.padding;
+            frame.paddingTop = layout.padding;
+            frame.paddingBottom = layout.padding;
+        }
+        // Auto-size frame based on children
+        if (frame.children.length > 0) {
+            // Calculate total height including padding and spacing
+            let totalHeight = frame.paddingTop + frame.paddingBottom;
+            let maxWidth = 0;
+            if (frame.layoutMode === 'VERTICAL') {
+                for (const child of frame.children) {
+                    totalHeight += child.height;
+                    if (child.width > maxWidth) {
+                        maxWidth = child.width;
+                    }
+                    if (child !== frame.children[frame.children.length - 1]) {
+                        totalHeight += frame.itemSpacing;
+                    }
+                }
+                // Add padding to width
+                maxWidth += frame.paddingLeft + frame.paddingRight;
+            }
+            else if (frame.layoutMode === 'HORIZONTAL') {
+                for (const child of frame.children) {
+                    if (child.height > totalHeight) {
+                        totalHeight = child.height;
+                    }
+                    maxWidth += child.width;
+                    if (child !== frame.children[frame.children.length - 1]) {
+                        maxWidth += frame.itemSpacing;
+                    }
+                }
+                // Add padding to width
+                maxWidth += frame.paddingLeft + frame.paddingRight;
+            }
+            // Update frame size if larger than current size
+            if (totalHeight > frame.height) {
+                frame.resize(frame.width, totalHeight);
+            }
+            if (maxWidth > frame.width) {
+                frame.resize(maxWidth, frame.height);
+            }
+        }
+    }
+}
+// Function to render a frame
+async function renderFrame(data, isTopLevel = false) {
+    const frame = figma.createFrame();
+    frame.name = data.name || data.id || 'Frame';
+    // Set initial size
+    const width = (data.layout && data.layout.width) || 1440;
+    const height = (data.layout && data.layout.height) || 900;
+    frame.resize(width, height);
+    // Fixed widths for two-column layout (Record Layout - 2/3 and 1/3 split)
+    // Available width after 24px padding: 1440 - (24 * 2) = 1392px
+    const mainContentWidth = 928; // 2/3 of 1392px (available width after padding)
+    const sidebarWidth = 464; // 1/3 of 1392px (available width after padding)
+    // Total width for two-column layout
+    const totalWidth = mainContentWidth + sidebarWidth;
+    // Set default layout mode if not specified
+    if (!data.layout || !data.layout.direction) {
+        frame.layoutMode = 'VERTICAL';
+        frame.primaryAxisAlignItems = 'MIN';
+        frame.counterAxisAlignItems = 'MIN';
+        // Only set default spacing if not explicitly specified
+        if (!data.layout || data.layout.spacing === undefined) {
+            frame.itemSpacing = 16;
+        }
+    }
+    // Add 24px padding for page content frames (but not for top-level screens)
+    if (!isTopLevel && data.id === 'page-content') {
+        frame.paddingLeft = 24;
+        frame.paddingRight = 24;
+        frame.paddingTop = 24;
+        frame.paddingBottom = 24;
+    }
+    // For two-column layout, override the children's widths
+    if (data.layout && data.layout.direction === 'horizontal' && data.children && data.children.length === 2) {
+        // Update the layout properties of the children
+        if (data.children[0] && data.children[0].layout) {
+            data.children[0].layout.width = mainContentWidth;
+        }
+        if (data.children[1] && data.children[1].layout) {
+            data.children[1].layout.width = sidebarWidth;
+        }
+        // Set horizontal layout properties
+        frame.layoutMode = 'HORIZONTAL';
+        frame.primaryAxisAlignItems = 'MIN'; // Align columns to start
+        frame.counterAxisAlignItems = 'MIN';
+        frame.itemSpacing = 12; // 12px gap between columns/panels
+        // frame.paddingRight = 32;
+        // frame.paddingTop = 32;
+        // frame.paddingBottom = 32;
+        // Resize frame to fit the fixed-width columns
+        frame.resize(totalWidth, frame.height);
+    }
+    // Apply layout properties
+    if (data.layout) {
+        await applyLayout(frame, data.layout);
+    }
+    // Set background color - force white for top-level frames or use specified fill
+    if (isTopLevel) {
+        frame.fills = [{ type: 'SOLID', color: { "r": 0.953, "g": 0.953, "b": 0.953 } }];
+    }
+    else if (data.properties && data.properties.fill) {
+        frame.fills = [{ type: 'SOLID', color: data.properties.fill }];
+    }
+    // Add 24px left padding to all frames except header (which includes navigation) and main screen
+    const frameName = data.name ? data.name.toLowerCase() : '';
+    const isHeader = frameName.includes('header');
+    const isNavigation = frameName.includes('navigation');
+    if (!isHeader && !isNavigation && !isTopLevel) {
+        // frame.paddingLeft = 24;
+        console.log(`Added 24px left padding to frame: ${data.name}`);
+    }
+    return frame;
+}
+// Function to render text
+async function renderText(data) {
+    const text = figma.createText();
+    // Load default font
+    await figma.loadFontAsync({ family: "Inter", style: "Regular" });
+    text.fontName = { family: "Inter", style: "Regular" };
+    // Set text content: prefer data.text if type is 'text', else fallback
+    let textContent = '';
+    if (data.type === 'text' && typeof data.text === 'string' && data.text.trim() !== '') {
+        textContent = data.text;
+    }
+    else if (data.properties && data.properties.text && typeof data.properties.text.text === 'string' && data.properties.text.text.trim() !== '') {
+        textContent = data.properties.text.text;
+    }
+    else {
+        textContent = 'Text'; // fallback
+    }
+    text.characters = textContent;
+    // Apply text properties with defaults
+    let color = { r: 0, g: 0, b: 0 };
+    let fontSize = 16;
+    let textAlign = 'LEFT';
+    if (data.properties && data.properties.text) {
+        const props = data.properties.text;
+        if (props.fontSize)
+            fontSize = props.fontSize;
+        if (props.textAlign) {
+            const align = props.textAlign.toLowerCase();
+            if (align === 'center')
+                textAlign = 'CENTER';
+            else if (align === 'right')
+                textAlign = 'RIGHT';
+            else if (align === 'justified')
+                textAlign = 'JUSTIFIED';
+            else
+                textAlign = 'LEFT';
+        }
+        if (props.color)
+            color = props.color;
+    }
+    text.fontSize = fontSize;
+    text.textAlignHorizontal = textAlign;
+    text.fills = [{ type: 'SOLID', color }];
+    // Ensure text node is sized to fit content
+    text.resizeWithoutConstraints(Math.max(100, text.width), Math.max(24, text.height));
+    return text;
+}
+// Function to render a rectangle
+async function renderRectangle(data) {
+    const rect = figma.createRectangle();
+    // Apply rectangle properties
+    if (data.properties && data.properties.rectangle) {
+        const props = data.properties.rectangle;
+        if (props.fill) {
+            rect.fills = [{ type: 'SOLID', color: props.fill }];
+        }
+        if (props.cornerRadius !== undefined) {
+            rect.cornerRadius = props.cornerRadius;
+        }
+        if (props.stroke) {
+            rect.strokes = [{ type: 'SOLID', color: props.stroke }];
+        }
+        if (props.strokeWidth !== undefined) {
+            rect.strokeWeight = props.strokeWidth;
+        }
+    }
+    return rect;
+}
+// Function to render a line
+async function renderLine(data) {
+    const line = figma.createLine();
+    // Apply line properties
+    if (data.properties && data.properties.line) {
+        const props = data.properties.line;
+        if (props.stroke) {
+            line.strokes = [{ type: 'SOLID', color: props.stroke }];
+        }
+        if (props.strokeWidth !== undefined) {
+            line.strokeWeight = props.strokeWidth;
+        }
+    }
+    return line;
+}
+// Function to render an image
+async function renderImage(data) {
+    const image = figma.createRectangle();
+    // Apply image properties
+    if (data.properties && data.properties.image) {
+        const props = data.properties.image;
+        if (props.url && props.url.trim() !== '') {
+            try {
+                const response = await fetch(props.url);
+                const arrayBuffer = await response.arrayBuffer();
+                const uint8Array = new Uint8Array(arrayBuffer);
+                const imageHash = await figma.createImage(uint8Array);
+                const scaleModeMap = {
+                    'fill': 'FILL',
+                    'fit': 'FIT',
+                    'tile': 'TILE',
+                    'stretch': 'FILL'
+                };
+                const scaleMode = scaleModeMap[props.scaleMode || 'fill'] || 'FILL';
+                image.fills = [{
+                        type: 'IMAGE',
+                        scaleMode,
+                        imageHash: imageHash.hash
+                    }];
+            }
+            catch (error) {
+                console.error('Failed to load image:', error);
+                image.fills = [{ type: 'SOLID', color: { r: 0.9, g: 0.9, b: 0.9 } }];
+            }
+        }
+    }
+    return image;
+}
+// Function to render a button
+async function renderButton(data) {
+    // Create a frame to represent the button
+    const buttonFrame = figma.createFrame();
+    buttonFrame.name = data.name || data.id || 'Button';
+    // Set default button size if not provided
+    const width = (data.layout && data.layout.width) || 120;
+    const height = (data.layout && data.layout.height) || 40;
+    buttonFrame.resize(width, height);
+    // Set background color and border radius
+    let fill = { r: 0.1, g: 0.5, b: 0.9 }; // default blue
+    let cornerRadius = 8;
+    if (data.properties && data.properties.rectangle) {
+        if (data.properties.rectangle.fill)
+            fill = data.properties.rectangle.fill;
+        if (typeof data.properties.rectangle.cornerRadius === 'number')
+            cornerRadius = data.properties.rectangle.cornerRadius;
+    }
+    buttonFrame.fills = [{ type: 'SOLID', color: fill }];
+    buttonFrame.cornerRadius = cornerRadius;
+    // Center children
+    buttonFrame.layoutMode = 'HORIZONTAL';
+    buttonFrame.primaryAxisAlignItems = 'CENTER';
+    buttonFrame.counterAxisAlignItems = 'CENTER';
+    buttonFrame.paddingLeft = 0;
+    buttonFrame.paddingRight = 0;
+    buttonFrame.paddingTop = 0;
+    buttonFrame.paddingBottom = 0;
+    buttonFrame.itemSpacing = 0;
+    // Create the text label
+    const labelNode = {
+        id: data.id + '-label',
+        type: 'text',
+        text: data.text || (data.properties && data.properties.text && data.properties.text.text) || 'Button',
+        properties: {
+            text: {
+                fontSize: 16,
+                color: { r: 1, g: 1, b: 1 }, // white text
+                textAlign: 'center',
+            },
+        },
+        layout: {
+            width: width,
+            height: height,
+        },
+    };
+    const textNode = await renderText(labelNode);
+    buttonFrame.appendChild(textNode);
+    return buttonFrame;
+}
+// Function to render a card
+async function renderCard(data) {
+    const card = figma.createFrame();
+    card.name = data.name || data.id || 'Card';
+    // Set initial size
+    const width = (data.layout && data.layout.width) || 300;
+    const height = (data.layout && data.layout.height) || 200;
+    card.resize(width, height);
+    // Set background color, border radius, and shadow
+    let fill = { r: 1, g: 1, b: 1 };
+    let cornerRadius = 12;
+    let shadow = false;
+    if (data.properties) {
+        if (data.properties.fill)
+            fill = data.properties.fill;
+        if (typeof data.properties.cornerRadius === 'number')
+            cornerRadius = data.properties.cornerRadius;
+        if (typeof data.properties.shadow === 'boolean')
+            shadow = data.properties.shadow;
+    }
+    card.fills = [{ type: 'SOLID', color: fill }];
+    card.cornerRadius = cornerRadius;
+    if (shadow) {
+        card.effects = [{ type: 'DROP_SHADOW', color: { r: 0, g: 0, b: 0, a: 0.15 }, offset: { x: 0, y: 4 }, radius: 12, spread: 0, visible: true, blendMode: 'NORMAL' }];
+    }
+    // Set default layout
+    card.layoutMode = 'VERTICAL';
+    card.primaryAxisAlignItems = 'MIN';
+    card.counterAxisAlignItems = 'MIN';
+    card.paddingLeft = 24;
+    card.paddingRight = 24;
+    card.paddingTop = 24;
+    card.paddingBottom = 24;
+    card.itemSpacing = 16;
+    // Apply layout properties
+    if (data.layout) {
+        await applyLayout(card, data.layout);
+    }
+    // Render children
+    if (data.children && Array.isArray(data.children)) {
+        for (const child of data.children) {
+            const childNode = await renderNode(child);
+            card.appendChild(childNode);
+        }
+    }
+    return card;
+}
+// Function to render an input
+async function renderInput(data) {
+    const frame = figma.createFrame();
+    frame.layoutMode = 'VERTICAL';
+    frame.primaryAxisAlignItems = 'MIN';
+    frame.counterAxisAlignItems = 'MIN';
+    frame.itemSpacing = 4;
+    frame.paddingLeft = 0;
+    frame.paddingRight = 0;
+    frame.paddingTop = 0;
+    frame.paddingBottom = 0;
+    frame.resize(240, 48);
+    // Label
+    if (data.properties && data.properties.input && data.properties.input.label) {
+        const labelNode = {
+            id: data.id + '-label',
+            type: 'text',
+            text: data.properties.input.label,
+            properties: { text: { fontSize: 14, color: { r: 0.2, g: 0.2, b: 0.2 } } },
+            layout: { width: 240, height: 20 },
+        };
+        const label = await renderText(labelNode);
+        frame.appendChild(label);
+    }
+    // Input box
+    const inputRect = figma.createRectangle();
+    inputRect.resize(240, 28);
+    inputRect.cornerRadius = 6;
+    inputRect.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
+    inputRect.strokes = [{ type: 'SOLID', color: { r: 0.36, g: 0.36, b: 0.36 } }];
+    inputRect.strokeWeight = 1;
+    frame.appendChild(inputRect);
+    // Placeholder/value
+    if (data.properties && data.properties.input && (data.properties.input.placeholder || data.properties.input.value)) {
+        const textNode = figma.createText();
+        await figma.loadFontAsync({ family: "Inter", style: "Regular" });
+        textNode.fontName = { family: "Inter", style: "Regular" };
+        textNode.characters = data.properties.input.value || data.properties.input.placeholder || '';
+        textNode.fontSize = 14;
+        textNode.fills = [{ type: 'SOLID', color: { r: 0.5, g: 0.5, b: 0.5 } }];
+        textNode.x = 8;
+        textNode.y = 24;
+        frame.appendChild(textNode);
+    }
+    return frame;
+}
+// Function to render a tab
+async function renderTab(data) {
+    const tab = figma.createFrame();
+    tab.layoutMode = 'HORIZONTAL';
+    tab.primaryAxisAlignItems = 'CENTER';
+    tab.counterAxisAlignItems = 'CENTER';
+    tab.paddingLeft = 16;
+    tab.paddingRight = 16;
+    tab.paddingTop = 8;
+    tab.paddingBottom = 8;
+    tab.itemSpacing = 8;
+    tab.resize(120, 36);
+    let fill = { r: 0.95, g: 0.95, b: 0.95 };
+    if (data.properties && data.properties.tab && data.properties.tab.selected) {
+        fill = { r: 0.1, g: 0.5, b: 0.9 };
+    }
+    tab.fills = [{ type: 'SOLID', color: fill }];
+    tab.cornerRadius = 8;
+    // Label
+    if (data.properties && data.properties.tab && data.properties.tab.label) {
+        const labelNode = {
+            id: data.id + '-tab-label',
+            type: 'text',
+            text: data.properties.tab.label,
+            properties: { text: { fontSize: 14, color: data.properties.tab.selected ? { r: 1, g: 1, b: 1 } : { r: 0.2, g: 0.2, b: 0.2 } } },
+            layout: { width: 80, height: 20 },
+        };
+        const label = await renderText(labelNode);
+        tab.appendChild(label);
+    }
+    return tab;
+}
+// Function to render a divider
+async function renderDivider(data) {
+    const line = figma.createLine();
+    const color = (data.properties && data.properties.divider && data.properties.divider.color) || { r: 0.8, g: 0.8, b: 0.8 };
+    const thickness = (data.properties && data.properties.divider && data.properties.divider.thickness) || 1;
+    line.strokes = [{ type: 'SOLID', color }];
+    line.strokeWeight = thickness;
+    if (data.layout && data.layout.width) {
+        line.resize(data.layout.width, thickness);
+    }
+    return line;
+}
+// Function to render a list
+async function renderList(data) {
+    const frame = figma.createFrame();
+    frame.name = data.name || data.id || 'List';
+    // Set initial size
+    const width = (data.layout && data.layout.width) || 240;
+    const height = (data.layout && data.layout.height) || 100;
+    frame.resize(width, height);
+    // Set default layout
+    frame.layoutMode = 'VERTICAL';
+    frame.primaryAxisAlignItems = 'MIN';
+    frame.counterAxisAlignItems = 'MIN';
+    frame.itemSpacing = 8;
+    frame.paddingLeft = 16;
+    frame.paddingRight = 16;
+    frame.paddingTop = 16;
+    frame.paddingBottom = 16;
+    // Apply layout properties
+    if (data.layout) {
+        await applyLayout(frame, data.layout);
+    }
+    // Render list items
+    if (data.properties && data.properties.list && data.properties.list.items && Array.isArray(data.properties.list.items)) {
+        let idx = 1;
+        for (const item of data.properties.list.items) {
+            // Create a row frame for each item
+            const rowFrame = figma.createFrame();
+            rowFrame.layoutMode = 'HORIZONTAL';
+            rowFrame.primaryAxisAlignItems = 'MIN';
+            rowFrame.counterAxisAlignItems = 'CENTER';
+            rowFrame.itemSpacing = 8;
+            rowFrame.resize(width - 32, 24); // Account for padding
+            // Add bullet or number if ordered
+            if (data.properties.list.ordered) {
+                const bullet = figma.createText();
+                await figma.loadFontAsync({ family: "Inter", style: "Regular" });
+                bullet.fontName = { family: "Inter", style: "Regular" };
+                bullet.characters = idx + '.';
+                bullet.fontSize = 14;
+                bullet.fills = [{ type: 'SOLID', color: { r: 0.2, g: 0.2, b: 0.2 } }];
+                rowFrame.appendChild(bullet);
+            }
+            else {
+                // Add bullet point for unordered lists
+                const bullet = figma.createText();
+                await figma.loadFontAsync({ family: "Inter", style: "Regular" });
+                bullet.fontName = { family: "Inter", style: "Regular" };
+                bullet.characters = '•';
+                bullet.fontSize = 14;
+                bullet.fills = [{ type: 'SOLID', color: { r: 0.2, g: 0.2, b: 0.2 } }];
+                rowFrame.appendChild(bullet);
+            }
+            // Create text node for the item
+            let itemNode;
+            if (typeof item === 'string') {
+                const textNode = {
+                    id: data.id + '-item-' + idx,
+                    type: 'text',
+                    text: item,
+                    properties: {
+                        text: {
+                            fontSize: 14,
+                            color: { r: 0.2, g: 0.2, b: 0.2 },
+                            textAlign: 'left'
+                        }
+                    },
+                    layout: {
+                        width: width - 48, // Account for bullet and spacing
+                        height: 20
+                    }
+                };
+                itemNode = await renderText(textNode);
+            }
+            else {
+                // If item is a Node object, render it
+                itemNode = await renderNode(item);
+            }
+            rowFrame.appendChild(itemNode);
+            frame.appendChild(rowFrame);
+            idx++;
+        }
+        // Auto-size the frame based on content
+        if (frame.children.length > 0) {
+            let totalHeight = frame.paddingTop + frame.paddingBottom;
+            for (const child of frame.children) {
+                totalHeight += child.height;
+                if (child !== frame.children[frame.children.length - 1]) {
+                    totalHeight += frame.itemSpacing;
+                }
+            }
+            frame.resize(frame.width, totalHeight);
+        }
+    }
+    return frame;
+}
+// Function to render a table
+async function renderTable(data) {
+    const frame = figma.createFrame();
+    frame.layoutMode = 'VERTICAL';
+    frame.primaryAxisAlignItems = 'MIN';
+    frame.counterAxisAlignItems = 'MIN';
+    frame.itemSpacing = 0;
+    frame.paddingLeft = 0;
+    frame.paddingRight = 0;
+    frame.paddingTop = 0;
+    frame.paddingBottom = 0;
+    frame.resize(400, 200);
+    // Only render from properties.table, never from children
+    if (data.properties && data.properties.table) {
+        const { columns = [], rows = [] } = data.properties.table;
+        // Validate columns and rows
+        if (!Array.isArray(columns) || !Array.isArray(rows)) {
+            console.error('Invalid table data:', data.properties.table);
+            return frame;
+        }
+        // Header row
+        const headerRow = figma.createFrame();
+        headerRow.layoutMode = 'HORIZONTAL';
+        headerRow.primaryAxisAlignItems = 'MIN';
+        headerRow.counterAxisAlignItems = 'MIN';
+        headerRow.itemSpacing = 0;
+        headerRow.paddingLeft = 12;
+        headerRow.paddingRight = 12;
+        headerRow.fills = [{ type: 'SOLID', color: { r: 0.97, g: 0.97, b: 0.97 } }];
+        // Calculate column width based on number of columns
+        const columnWidth = Math.floor(400 / Math.max(1, columns.length));
+        for (const col of columns) {
+            const cell = figma.createText();
+            await figma.loadFontAsync({ family: "Inter", style: "Bold" });
+            cell.fontName = { family: "Inter", style: "Bold" };
+            cell.characters = String(col);
+            cell.fontSize = 14;
+            cell.fills = [{ type: 'SOLID', color: { r: 0.1, g: 0.1, b: 0.1 } }];
+            cell.resize(columnWidth, 40);
+            headerRow.appendChild(cell);
+        }
+        frame.appendChild(headerRow);
+        // Data rows
+        for (let i = 0; i < rows.length; i++) {
+            const row = rows[i];
+            if (!Array.isArray(row))
+                continue;
+            const rowFrame = figma.createFrame();
+            rowFrame.layoutMode = 'HORIZONTAL';
+            rowFrame.primaryAxisAlignItems = 'MIN';
+            rowFrame.counterAxisAlignItems = 'MIN';
+            rowFrame.itemSpacing = 0;
+            rowFrame.paddingLeft = 12;
+            rowFrame.paddingRight = 12;
+            // Alternate row colors
+            if (i % 2 === 1) {
+                rowFrame.fills = [{ type: 'SOLID', color: { r: 0.98, g: 0.98, b: 0.98 } }];
+            }
+            for (const cellText of row) {
+                const cell = figma.createText();
+                await figma.loadFontAsync({ family: "Inter", style: "Regular" });
+                cell.fontName = { family: "Inter", style: "Regular" };
+                cell.characters = String(cellText);
+                cell.fontSize = 14;
+                cell.fills = [{ type: 'SOLID', color: { r: 0.2, g: 0.2, b: 0.2 } }];
+                cell.resize(columnWidth, 40);
+                rowFrame.appendChild(cell);
+            }
+            frame.appendChild(rowFrame);
+        }
+        // Add borders
+        frame.strokes = [{ type: 'SOLID', color: { r: 0.8, g: 0.8, b: 0.8 } }];
+        frame.strokeWeight = 1;
+    }
+    return frame;
+}
+// Function to render a header
+async function renderHeader(data) {
+    // Try to find a header component from available components
+    const headerComponentKey = findMatchingComponentKey('header', availableComponents);
+    if (headerComponentKey) {
+        try {
+            console.log('Attempting to import header component with key:', headerComponentKey);
+            await loadRequiredFonts();
+            const component = await figma.importComponentByKeyAsync(headerComponentKey);
+            if (component) {
+                console.log('Successfully imported header component');
+                const node = component.createInstance();
+                // Set the name if provided
+                if (data.name) {
+                    node.name = data.name;
+                }
+                // Apply layout if provided
+                if (data.layout) {
+                    await applyLayout(node, data.layout);
+                }
+                // If we have AI-generated text, update the component text
+                if (data.text && node.type === 'INSTANCE') {
+                    console.log('Updating header component text with:', data.text);
+                    await updateComponentText(node, data.text);
+                }
+                return node;
+            }
+        }
+        catch (error) {
+            console.error('Failed to import header component, falling back to manual rendering:', error);
+        }
+    }
+    else {
+        console.log('No header component found in available components, using manual rendering');
+    }
+    // Fallback to manual header rendering
+    const frame = figma.createFrame();
+    frame.layoutMode = 'HORIZONTAL';
+    frame.primaryAxisAlignItems = 'CENTER';
+    frame.counterAxisAlignItems = 'CENTER';
+    // Remove header padding for cleaner layout
+    frame.paddingLeft = 0;
+    frame.paddingRight = 0;
+    frame.paddingTop = 0;
+    frame.paddingBottom = 0;
+    frame.itemSpacing = 64;
+    frame.resize(1440, 64);
+    let fill = { r: 0.97, g: 0.97, b: 0.97 };
+    if (data.properties && data.properties.header && data.properties.header.backgroundColor) {
+        fill = data.properties.header.backgroundColor;
+    }
+    frame.fills = [{ type: 'SOLID', color: fill }];
+    // Render children (e.g., nav, logo, etc.)
+    if (data.children && Array.isArray(data.children)) {
+        for (const child of data.children) {
+            const childNode = await renderNode(child);
+            frame.appendChild(childNode);
+        }
+    }
+    return frame;
+}
+// Function to render a navigation
+async function renderNavigation(data) {
+    const frame = figma.createFrame();
+    frame.name = data.name || data.id || 'Navigation';
+    // Set default layout if not provided
+    const layout = data.layout || {
+        width: 1440,
+        height: 48,
+        x: 0,
+        y: 64,
+        direction: 'horizontal',
+        alignment: 'center',
+        spacing: 32,
+        padding: 0
+    };
+    // Apply layout
+    frame.resize(layout.width || 1440, layout.height || 48);
+    frame.x = layout.x || 0;
+    frame.y = layout.y || 64;
+    // Set up frame properties
+    const direction = layout.direction ? layout.direction.toUpperCase() : 'HORIZONTAL';
+    const alignment = layout.alignment ? layout.alignment.toUpperCase() : 'CENTER';
+    frame.layoutMode = direction;
+    frame.primaryAxisAlignItems = alignment;
+    frame.counterAxisAlignItems = 'CENTER';
+    frame.itemSpacing = layout.spacing || 32;
+    // frame.paddingLeft = layout.padding || 24;
+    // frame.paddingRight = layout.padding || 24;
+    // frame.paddingTop = layout.padding || 24;
+    // frame.paddingBottom = layout.padding || 24;
+    // Set background color
+    frame.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
+    // Render children
+    if (data.children && Array.isArray(data.children)) {
+        for (const child of data.children) {
+            const childNode = await renderNode(child);
+            frame.appendChild(childNode);
+        }
+    }
+    return frame;
+}
+// Function to render a file selector
+async function renderFileSelector(data) {
+    const frame = figma.createFrame();
+    frame.name = data.name || data.id || 'File Selector';
+    // Set initial size
+    const width = (data.layout && data.layout.width) || 240;
+    const height = (data.layout && data.layout.height) || 48;
+    frame.resize(width, height);
+    // Set default layout
+    frame.layoutMode = 'HORIZONTAL';
+    frame.primaryAxisAlignItems = 'CENTER';
+    frame.counterAxisAlignItems = 'CENTER';
+    frame.paddingLeft = 16;
+    frame.paddingRight = 16;
+    frame.paddingTop = 8;
+    frame.paddingBottom = 8;
+    frame.itemSpacing = 8;
+    // Create the button frame
+    const buttonFrame = figma.createFrame();
+    buttonFrame.name = 'Select File Button';
+    buttonFrame.resize(width - 32, 32);
+    buttonFrame.cornerRadius = 6;
+    buttonFrame.fills = [{ type: 'SOLID', color: { r: 0.1, g: 0.5, b: 0.9 } }];
+    buttonFrame.layoutMode = 'HORIZONTAL';
+    buttonFrame.primaryAxisAlignItems = 'CENTER';
+    buttonFrame.counterAxisAlignItems = 'CENTER';
+    // Add button text
+    const textNode = {
+        id: data.id + '-button-text',
+        type: 'text',
+        text: 'Select File',
+        properties: {
+            text: {
+                fontSize: 14,
+                color: { r: 1, g: 1, b: 1 },
+                textAlign: 'center'
+            }
+        }
+    };
+    const text = await renderText(textNode);
+    buttonFrame.appendChild(text);
+    frame.appendChild(buttonFrame);
+    return frame;
+}
+// Function to report progress to UI
 function reportProgress(stage, message) {
     figma.ui.postMessage({
         type: "progress",
         stage,
         message
     });
+}
+async function updateComponentText(node, text) {
+    try {
+        console.log('Updating component text for node:', node.name, 'with text:', text);
+        // For component instances, use the override approach
+        if (node.type === 'INSTANCE') {
+            const instance = node;
+            // Find text nodes by name or type
+            const textNodes = instance.findAll(node => node.type === "TEXT");
+            if (textNodes.length > 0) {
+                console.log(`Found ${textNodes.length} text nodes in component instance`);
+                // Log all text nodes for debugging
+                textNodes.forEach((textNode, index) => {
+                    console.log(`Text node ${index}:`, {
+                        name: textNode.name,
+                        characters: textNode.characters,
+                        visible: textNode.visible,
+                        x: textNode.x,
+                        y: textNode.y
+                    });
+                });
+                // Try to find a text node with specific names first
+                let targetTextNode = textNodes.find(tn => tn.name.toLowerCase().includes('label') ||
+                    tn.name.toLowerCase().includes('text') ||
+                    tn.name.toLowerCase().includes('title') ||
+                    tn.name.toLowerCase().includes('content'));
+                // If no specific text node found, use the first visible one
+                if (!targetTextNode) {
+                    targetTextNode = textNodes.find(tn => tn.visible) || textNodes[0];
+                }
+                if (targetTextNode) {
+                    console.log('Target text node:', {
+                        name: targetTextNode.name,
+                        characters: targetTextNode.characters,
+                        visible: targetTextNode.visible,
+                        x: targetTextNode.x,
+                        y: targetTextNode.y
+                    });
+                    try {
+                        // Load the font
+                        await figma.loadFontAsync(targetTextNode.fontName);
+                        // Use override approach
+                        targetTextNode.characters = text;
+                        console.log('Successfully updated text node with override');
+                        // Verify the update
+                        console.log('Updated text node now contains:', targetTextNode.characters);
+                    }
+                    catch (error) {
+                        console.error('Error updating text node with override:', error);
+                    }
+                }
+                else {
+                    console.log('No suitable text node found for update');
+                }
+            }
+            else {
+                console.log('No text nodes found in component instance');
+            }
+        }
+        else if (node.type === 'FRAME') {
+            // For frames, find text nodes recursively
+            const textNodes = node.findAll(node => node.type === "TEXT");
+            if (textNodes.length > 0) {
+                console.log(`Found ${textNodes.length} text nodes in frame`);
+                // Log all text nodes for debugging
+                textNodes.forEach((textNode, index) => {
+                    console.log(`Text node ${index}:`, {
+                        name: textNode.name,
+                        characters: textNode.characters,
+                        visible: textNode.visible,
+                        x: textNode.x,
+                        y: textNode.y
+                    });
+                });
+                // Try to find a text node with specific names first
+                let targetTextNode = textNodes.find(tn => tn.name.toLowerCase().includes('label') ||
+                    tn.name.toLowerCase().includes('text') ||
+                    tn.name.toLowerCase().includes('title') ||
+                    tn.name.toLowerCase().includes('content'));
+                // If no specific text node found, use the first visible one
+                if (!targetTextNode) {
+                    targetTextNode = textNodes.find(tn => tn.visible) || textNodes[0];
+                }
+                if (targetTextNode) {
+                    console.log('Target text node:', {
+                        name: targetTextNode.name,
+                        characters: targetTextNode.characters,
+                        visible: targetTextNode.visible,
+                        x: targetTextNode.x,
+                        y: targetTextNode.y
+                    });
+                    try {
+                        // Load the font
+                        await figma.loadFontAsync(targetTextNode.fontName);
+                        // Use override approach
+                        targetTextNode.characters = text;
+                        console.log('Successfully updated text node with override');
+                        // Verify the update
+                        console.log('Updated text node now contains:', targetTextNode.characters);
+                    }
+                    catch (error) {
+                        console.error('Error updating text node with override:', error);
+                    }
+                }
+                else {
+                    console.log('No suitable text node found for update');
+                }
+            }
+            else {
+                console.log('No text nodes found in frame');
+            }
+        }
+    }
+    catch (error) {
+        console.error('Error updating component text:', error);
+    }
+}
+// Function to enhance a selected component
+async function enhanceComponent(node, enhancementPrompt) {
+    console.log("Plugin: enhanceComponent function called", {
+        nodeType: node.type,
+        nodeName: node.name,
+        prompt: enhancementPrompt
+    });
+    try {
+        // Get the component type and current properties
+        const componentType = getComponentType(node);
+        const currentProperties = extractComponentProperties(node);
+        console.log("Plugin: Component analysis", {
+            componentType,
+            currentProperties
+        });
+        // Create a focused prompt for this specific component
+        const focusedPrompt = `
+Enhance this ${componentType} component with the following request: "${enhancementPrompt}"
+
+Current component properties: ${JSON.stringify(currentProperties, null, 2)}
+
+Please provide a JSON response with the enhanced component definition that matches the existing component structure but incorporates the requested improvements.
+Use the same component schema as defined in the system but enhance it according to the user's request.
+
+IMPORTANT: Respond with ONLY the JSON object for the enhanced component, no other text.
+`;
+        // Send enhancement request to server
+        const requestBody = {
+            prompt: enhancementPrompt,
+            componentType: componentType,
+            currentProperties: currentProperties,
+            availableComponents
+        };
+        // First test if server is reachable
+        try {
+            console.log("Plugin: Testing server connection...");
+            const testResponse = await fetch("http://localhost:3000/test");
+            const testData = await testResponse.text();
+            console.log("Plugin: Server test response:", testData);
+        }
+        catch (testError) {
+            console.error("Plugin: Server connection test failed:", testError);
+        }
+        console.log("Plugin: Making fetch request to enhance-component endpoint", {
+            url: "http://localhost:3000/enhance-component",
+            requestBody
+        });
+        const response = await fetch("http://localhost:3000/enhance-component", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Accept: "application/json",
+            },
+            body: JSON.stringify(requestBody),
+        });
+        console.log("Plugin: Received response", {
+            status: response.status,
+            ok: response.ok
+        });
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error("Plugin: Server error response:", errorText);
+            throw new Error(`Server error: ${response.status} - ${errorText}`);
+        }
+        const responseText = await response.text();
+        console.log("Plugin: Response text:", responseText);
+        let enhancedComponent;
+        try {
+            enhancedComponent = JSON.parse(responseText);
+            console.log("Plugin: Parsed response:", enhancedComponent);
+        }
+        catch (parseError) {
+            console.error("Plugin: Failed to parse response as JSON:", parseError);
+            throw new Error(`Invalid JSON response: ${responseText}`);
+        }
+        // Validate the response
+        if (!enhancedComponent || !enhancedComponent.type) {
+            console.error("Plugin: Invalid enhancement response format:", enhancedComponent);
+            throw new Error('Invalid enhancement response format');
+        }
+        // Render the enhanced component
+        const enhancedNode = await renderNode(enhancedComponent, false);
+        // Position the enhanced node at the same location as the original
+        enhancedNode.x = node.x;
+        enhancedNode.y = node.y;
+        // Replace the original node with the enhanced one
+        const parent = node.parent;
+        if (parent && 'appendChild' in parent) {
+            const nodeIndex = parent.children.indexOf(node);
+            node.remove();
+            parent.insertChild(nodeIndex, enhancedNode);
+        }
+        else {
+            // If no parent or can't insert at index, just add to current page
+            node.remove();
+            figma.currentPage.appendChild(enhancedNode);
+        }
+        // Update selection to the new enhanced component
+        figma.currentPage.selection = [enhancedNode];
+        selectedComponentNode = enhancedNode;
+        figma.notify("✨ Component enhanced successfully!");
+        // Notify UI of successful enhancement
+        figma.ui.postMessage({
+            type: "componentEnhanced",
+            success: true
+        });
+    }
+    catch (error) {
+        console.error("Error enhancing component:", error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+        figma.notify("❌ Failed to enhance component: " + errorMessage, { error: true });
+        // Notify UI of failed enhancement
+        figma.ui.postMessage({
+            type: "componentEnhanced",
+            success: false,
+            error: errorMessage
+        });
+    }
+}
+// Helper function to determine component type from Figma node
+function getComponentType(node) {
+    if (node.type === 'INSTANCE') {
+        // For component instances, try to determine type from name
+        const name = node.name.toLowerCase();
+        if (name.includes('button'))
+            return 'button';
+        if (name.includes('input'))
+            return 'input';
+        if (name.includes('card'))
+            return 'card';
+        if (name.includes('header'))
+            return 'header';
+        if (name.includes('navigation'))
+            return 'navigation';
+        return 'component';
+    }
+    if (node.type === 'FRAME')
+        return 'frame';
+    if (node.type === 'TEXT')
+        return 'text';
+    if (node.type === 'RECTANGLE')
+        return 'rectangle';
+    if (node.type === 'LINE')
+        return 'line';
+    return node.type.toLowerCase();
+}
+// Helper function to extract current properties from a Figma node
+function extractComponentProperties(node) {
+    const properties = {
+        id: node.id,
+        name: node.name,
+        type: getComponentType(node),
+        layout: {
+            width: node.width,
+            height: node.height,
+            x: node.x,
+            y: node.y
+        }
+    };
+    // Extract type-specific properties
+    if (node.type === 'TEXT') {
+        const textNode = node;
+        properties.text = textNode.characters;
+        properties.properties = {
+            text: {
+                fontSize: textNode.fontSize,
+                fontFamily: textNode.fontName,
+                textAlign: textNode.textAlignHorizontal
+            }
+        };
+        if (Array.isArray(textNode.fills) && textNode.fills.length > 0 && textNode.fills[0].type === 'SOLID') {
+            properties.properties.text.color = textNode.fills[0].color;
+        }
+    }
+    if (node.type === 'RECTANGLE') {
+        const rectNode = node;
+        properties.properties = {
+            rectangle: {
+                cornerRadius: rectNode.cornerRadius
+            }
+        };
+        if (Array.isArray(rectNode.fills) && rectNode.fills.length > 0 && rectNode.fills[0].type === 'SOLID') {
+            properties.properties.rectangle.fill = rectNode.fills[0].color;
+        }
+    }
+    if (node.type === 'FRAME') {
+        const frameNode = node;
+        properties.properties = {
+            frame: {
+                layoutMode: frameNode.layoutMode,
+                paddingLeft: frameNode.paddingLeft,
+                paddingRight: frameNode.paddingRight,
+                paddingTop: frameNode.paddingTop,
+                paddingBottom: frameNode.paddingBottom,
+                itemSpacing: frameNode.itemSpacing
+            }
+        };
+        if (Array.isArray(frameNode.fills) && frameNode.fills.length > 0 && frameNode.fills[0].type === 'SOLID') {
+            properties.properties.frame.fill = frameNode.fills[0].color;
+        }
+    }
+    return properties;
+}
+// Replace component with one from the library
+async function replaceComponent(node, replaceWithComponent) {
+    try {
+        console.log("Plugin: Starting component replacement", {
+            nodeId: node.id,
+            nodeName: node.name,
+            nodeType: node.type,
+            replaceWith: replaceWithComponent
+        });
+        // Store the current node's position and size
+        const currentX = node.x;
+        const currentY = node.y;
+        const currentWidth = node.width;
+        const currentHeight = node.height;
+        const parent = node.parent;
+        // Create instance of the selected component
+        const component = await figma.importComponentByKeyAsync(replaceWithComponent.key);
+        if (!component) {
+            throw new Error(`Failed to import component with key: ${replaceWithComponent.key}`);
+        }
+        // Create an instance of the component
+        const newInstance = component.createInstance();
+        // Position the new instance at the same location
+        newInstance.x = currentX;
+        newInstance.y = currentY;
+        // Try to maintain similar size if possible
+        try {
+            newInstance.resize(currentWidth, currentHeight);
+        }
+        catch (error) {
+            console.log("Plugin: Could not resize component, using default size", error);
+        }
+        // Replace the component at the same position in the parent
+        if (parent && 'appendChild' in parent) {
+            const nodeIndex = parent.children.indexOf(node);
+            node.remove();
+            parent.insertChild(nodeIndex, newInstance);
+        }
+        else {
+            // If no parent or can't insert at index, just add to current page
+            node.remove();
+            figma.currentPage.appendChild(newInstance);
+        }
+        // Select the new component
+        figma.currentPage.selection = [newInstance];
+        figma.viewport.scrollAndZoomIntoView([newInstance]);
+        console.log("Plugin: Component replacement completed successfully");
+        // Notify UI of success
+        figma.ui.postMessage({
+            type: 'componentReplaced',
+            success: true,
+            componentName: replaceWithComponent.name
+        });
+    }
+    catch (error) {
+        console.error("Plugin: Component replacement failed", error);
+        // Notify UI of error
+        figma.ui.postMessage({
+            type: 'componentReplaced',
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error occurred'
+        });
+    }
 }

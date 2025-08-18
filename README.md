@@ -54,7 +54,7 @@ cd figma-ux-agent
 
 2. Install dependencies:
 ```bash
-npm install
+pnpm install
 ```
 
 3. Set up environment variables:
@@ -74,7 +74,7 @@ LOG_LEVEL=INFO
 
 4. Start the server:
 ```bash
-npm run dev
+pnpm run dev
 ```
 
 5. In Figma:

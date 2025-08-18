@@ -11,7 +11,8 @@ Reference JSON Structure:
         "width": number,
         "height": number,
         "x": number,
-        "y": number
+        "y": number,
+
       },
       "children": [
         {
@@ -22,7 +23,9 @@ Reference JSON Structure:
             "width": number,
             "height": number,
             "x": number,
-            "y": number
+            "y": number,
+            "padding": { "top": number, "right": number, "bottom": number, "left": number }, 
+            "margin": { "top": number, "right": number, "bottom": number, "left": number }   
           },
           "properties": {
             "text": "Text shown on component"
@@ -49,7 +52,14 @@ Guidelines:
 4. All numeric values must be numbers (not strings).
 5. All \`text\` fields should contain meaningful labels or placeholders.
 6. If you include colors, they must be in hex format (e.g., "#000000").
-7. Return only a valid JSON object — no markdown, comments, or extra text.
-8. Ensure each component's variant matches exactly with the available variants for that type.
+7. For each component, you may include optional "padding" and "margin" properties inside the "layout" object, e.g.:
+   "layout": {
+     ...,
+     "padding": { "top": 8, "right": 16, "bottom": 8, "left": 16 },
+     "margin": { "top": 16, "right": 0, "bottom": 0, "left": 0 }
+   }
+   If not specified, default to 0 for all sides.
+8. Return only a valid JSON object — no markdown, comments, or extra text.
+9. Ensure each component's variant matches exactly with the available variants for that type.
 
 Goal: Output a complete UI flow as structured JSON, ready to be rendered in Figma.`;
