@@ -7,3 +7,5 @@ out/
 dist/
 src/plugin.js
 .env
+
+.DS_Store 

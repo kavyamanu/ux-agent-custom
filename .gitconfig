@@ -1,9 +1,0 @@
-[user]
-email = kavyamanupati11@gmail.com
-name = Kavya Manupati
- 
-[github]
-user = "kavyamanu"
- 
-[core]
-sshCommand = "ssh -i ~/.ssh/kavyamanu"
